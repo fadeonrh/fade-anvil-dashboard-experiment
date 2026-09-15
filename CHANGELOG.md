@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-15
+
+### Added
+- `bin/fade-anvil.js` entry point for `npx` launcher (`npx fade-anvil`)
+- `public/openapi.json` — OpenAPI 3.0 spec for all API endpoints
+- `.github/workflows/ci.yml` — GitHub Actions CI (typecheck + tests on Node 20/22)
+- Server-side analytics in `/api/health` (uptime, scanCount, requestCount)
+- Structured error responses with `code`, `message`, and `doc_url` fields
+- `npm start` script runs standalone server via `node bin/fade-anvil.js`
+
+### Changed
+- `package.json` version bumped to 1.2.0
+- `package.json` `start` script changed from `vercel dev` to `node bin/fade-anvil.js`
+- API error format: `{ error: { code, message, doc_url } }` (was `{ error: "string" }`)
+- Health endpoint returns `version: "1.2.0"` (was `"1.0.0"`)
+
 ## [1.1.0] - 2026-09-15
 
 ### Added

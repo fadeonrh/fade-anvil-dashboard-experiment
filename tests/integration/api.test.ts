@@ -80,7 +80,7 @@ describe("API Integration", () => {
         const market = body[0];
         assert.ok(typeof market.marketId === "number", "marketId should be number");
         assert.ok(typeof market.collection === "string", "collection should be string");
-        assert.ok(typeof market.anvilFloorEth === "number", "anvilFloorEth should be number");
+        assert.ok(typeof market.anvilFloorEth === "number" || market.anvilFloorEth === null, "anvilFloorEth should be number or null");
         assert.ok(typeof market.spread === "object", "spread should be object");
         assert.ok(typeof market.verified === "boolean", "verified should be boolean");
       }

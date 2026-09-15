@@ -1,9 +1,12 @@
 {
   "name": "fade-anvil-dashboard",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "Public Anvil AMM dashboard for Robinhood Chain (4663) — real-time spread data",
+  "bin": {
+    "fade-anvil": "./bin/fade-anvil.js"
+  },
   "scripts": {
     "dev": "vercel dev",
     "build": "tsc",
@@ -11,7 +14,7 @@
     "test": "npx tsx --test tests/**/*.test.ts",
     "test:unit": "npx tsx --test tests/unit/**/*.test.ts",
     "test:integration": "npx tsx --test tests/integration/**/*.test.ts",
-    "start": "vercel dev"
+    "start": "npx tsx bin/fade-anvil.js"
   },
   "engines": {
     "node": ">=20"

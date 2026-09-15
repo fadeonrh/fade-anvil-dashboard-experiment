@@ -1,0 +1,171 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "F-A-D-E Anvil Dashboard API",
+    "description": "Real-time NFT arbitrage data for Anvil AMM markets on Robinhood Chain (4663).",
+    "version": "1.1.0",
+    "contact": {
+      "name": "FADE",
+      "url": "https://x.com/FadeonRH"
+    }
+  },
+  "servers": [
+    { "url": "http://localhost:3004", "description": "Local development" },
+    { "url": "https://your-domain.vercel.app", "description": "Production" }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "health",
+        "summary": "Health check",
+        "description": "Returns liveness probe with uptime, scan count, and request count.",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" },
+                "example": {
+                  "ok": true,
+                  "timestamp": 1789478666342,
+                  "uptime": 3600,
+                  "scanCount": 42,
+                  "requestCount": 1337
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/markets": {
+      "get": {
+        "operationId": "getMarkets",
+        "summary": "List all Anvil markets",
+        "description": "Returns all Anvil AMM markets with spread data. Results are cached for 5 minutes.",
+        "tags": ["Markets"],
+        "parameters": [
+          {
+            "name": "force",
+            "in": "query",
+            "schema": { "type": "boolean", "default": false },
+            "description": "Bypass the 5-minute cache and force a fresh scan."
+          },
+          {
+            "name": "openseaKey",
+            "in": "query",
+            "schema": { "type": "string" },
+            "description": "User-provided OpenSea API key. Stored in browser only, never saved server-side."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of market objects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Market" }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Scan failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "example": {
+                  "error": {
+                    "code": "SCAN_FAILED",
+                    "message": "anvil scan failed: RPC timeout"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "required": ["ok", "timestamp"],
+        "properties": {
+          "ok": { "type": "boolean" },
+          "timestamp": { "type": "number", "description": "Unix timestamp (ms)" },
+          "uptime": { "type": "number", "description": "Uptime in seconds" },
+          "scanCount": { "type": "number", "description": "Total scans performed" },
+          "requestCount": { "type": "number", "description": "Total requests served" }
+        }
+      },
+      "Market": {
+        "type": "object",
+        "required": ["marketId", "collection", "spread"],
+        "properties": {
+          "marketId": { "type": "number", "description": "On-chain market ID" },
+          "collection": { "type": "string", "description": "NFT collection contract address" },
+          "collectionName": { "type": "string", "description": "Human-readable collection name" },
+          "collectionSymbol": { "type": "string", "description": "Collection token symbol" },
+          "token": { "type": "string", "description": "Collection token contract address" },
+          "tokenSymbol": { "type": "string", "description": "Token symbol" },
+          "amm": { "type": "string", "description": "Anvil AMM contract address" },
+          "tokensPerNFT": { "type": "string", "description": "Tokens required per NFT (wei)" },
+          "randomFeeBps": { "type": "number", "description": "Random fee in basis points" },
+          "specificFeeBps": { "type": "number", "description": "Specific fee in basis points" },
+          "inventorySize": { "type": "number", "description": "NFTs available in AMM vault" },
+          "anvilFloorEth": { "type": "number", "nullable": true, "description": "Anvil floor price in ETH" },
+          "tokenPriceEth": { "type": "number", "nullable": true, "description": "DEX token price in ETH" },
+          "poolTvlUsd": { "type": "number", "nullable": true, "description": "Pool TVL in USD" },
+          "dexId": { "type": "string", "description": "DEX identifier" },
+          "osSlug": { "type": "string", "nullable": true, "description": "OpenSea collection slug" },
+          "osFloorEth": { "type": "number", "nullable": true, "description": "OpenSea floor listing in ETH" },
+          "osFloorOfferEth": { "type": "number", "nullable": true, "description": "OpenSea highest bid in ETH" },
+          "osFloorListings": { "type": "number", "nullable": true, "description": "Listings at floor price" },
+          "osTotalListings": { "type": "number", "nullable": true, "description": "Total OpenSea listings" },
+          "volume24hEth": { "type": "number", "nullable": true, "description": "24h volume in ETH" },
+          "sales24h": { "type": "number", "nullable": true, "description": "24h sales count" },
+          "spread": { "$ref": "#/components/schemas/Spread" },
+          "observedAtMs": { "type": "number", "description": "Observation timestamp (ms)" },
+          "verified": { "type": "boolean", "description": "Clutch.market verified badge" },
+          "liquidityLocked": { "type": "boolean", "description": "Liquidity lock status" },
+          "clutchTvl": { "type": "number", "description": "Clutch TVL" },
+          "clutchApr": { "type": "number", "description": "Clutch APR" },
+          "clutchNftCount": { "type": "number", "description": "Clutch NFT count" }
+        }
+      },
+      "Spread": {
+        "type": "object",
+        "properties": {
+          "tradable": { "type": "boolean", "description": "Whether market meets tradability thresholds" },
+          "reason": { "type": "string", "description": "Human-readable verdict" },
+          "netSpreadEth": { "type": "number", "nullable": true, "description": "Net spread in ETH (floor exit)" },
+          "netSpreadPct": { "type": "number", "nullable": true, "description": "Net spread as percentage" },
+          "netSpreadOfferEth": { "type": "number", "nullable": true, "description": "Net spread in ETH (bid exit)" },
+          "liquidityClass": { "type": "string", "enum": ["dead", "thin", "liquid", "null"], "description": "Liquidity classification" },
+          "buyTotalEth": { "type": "number", "nullable": true, "description": "Total buy cost in ETH" },
+          "gasEth": { "type": "number", "nullable": true, "description": "Estimated gas cost in ETH" },
+          "warnings": { "type": "array", "items": { "type": "string" }, "description": "Non-blocking caution notes" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string", "description": "Machine-readable error code" },
+              "message": { "type": "string", "description": "Human-readable error message" },
+              "doc_url": { "type": "string", "description": "Link to documentation" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

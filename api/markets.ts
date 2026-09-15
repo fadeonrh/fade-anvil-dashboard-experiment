@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createThrottledClient } from "../src/lib/config.js";
 import { AnvilScanner } from "../src/lib/anvil-combine.js";
+import { incrementScanCount, incrementRequestCount } from "./health.js";
 
 // Module-level singleton — persists across warm invocations
 let scanner: AnvilScanner | null = null;
@@ -23,11 +24,13 @@ function serialize<T>(obj: T): T {
   ) as T;
 }
 
+const DOC_URL = "https://github.com/fadeonrh/fade-anvil-dashboard#api-endpoints";
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  incrementRequestCount();
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -38,12 +41,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const userKey = typeof req.query.openseaKey === "string" ? req.query.openseaKey : "";
     const anvilScanner = getScanner();
 
-    // If user provided a key, update the scanner and force refresh
     if (userKey) {
       anvilScanner.updateApiKey(userKey);
     }
 
     const spreads = await anvilScanner.spreads(force);
+    incrementScanCount();
 
     return res.status(200).json(
       serialize(
@@ -72,7 +75,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           sales24h: s.opensea.sales24h,
           spread: s.spread,
           observedAtMs: s.state.observedAtMs,
-          // Clutch.market metadata
           verified: s.state.clutch?.verified ?? false,
           liquidityLocked: s.state.clutch?.liquidityLocked ?? false,
           liquiditySoftLocked: s.state.clutch?.liquiditySoftLocked ?? false,
@@ -93,6 +95,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
   } catch (e) {
     console.error("Anvil scan failed:", e);
-    return res.status(500).json({ error: "anvil scan failed: " + (e as Error).message });
+    return res.status(500).json({
+      error: {
+        code: "SCAN_FAILED",
+        message: "anvil scan failed: " + (e as Error).message,
+        doc_url: DOC_URL,
+      },
+    });
   }
 }
