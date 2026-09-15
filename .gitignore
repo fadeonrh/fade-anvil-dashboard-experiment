@@ -3,3 +3,22 @@ dist/
 .env
 .vercel/
 .gstack/
+
+# Test artifacts
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+!public/**/*.svg
+coverage/
+test-report*
+TESTING.md
+
+# Audit/design reports
+design-audit-*/
+design-baseline.json
+
+# Temp files
+*.tmp
+*.log
