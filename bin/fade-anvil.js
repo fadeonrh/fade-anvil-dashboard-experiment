@@ -2,6 +2,7 @@
 import http from "node:http";
 import { createThrottledClient } from "../src/lib/config.js";
 import { AnvilScanner } from "../src/lib/anvil-combine.js";
+import { trackRequest, trackScan, getSnapshot } from "../src/lib/analytics.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,13 +22,11 @@ function serialize(obj) {
   );
 }
 
-const stats = { scanCount: 0, requestCount: 0, startedAt: Date.now() };
-
 const server = http.createServer(async (req, res) => {
+  const start = Date.now();
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  stats.requestCount++;
 
   if (req.method === "OPTIONS") {
     res.writeHead(200);
@@ -37,14 +36,24 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
   if (url.pathname === "/api/health") {
+    const snapshot = getSnapshot();
+    trackRequest("/api/health", Date.now() - start, false);
     res.writeHead(200, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({
       ok: true,
       timestamp: Date.now(),
-      uptime: Math.floor((Date.now() - stats.startedAt) / 1000),
-      scanCount: stats.scanCount,
-      requestCount: stats.requestCount,
+      version: "1.2.0",
+      uptime: snapshot.uptime,
+      scanCount: snapshot.scans.count,
+      requestCount: snapshot.requests.total,
     }));
+  }
+
+  if (url.pathname === "/api/analytics") {
+    trackRequest("/api/analytics", Date.now() - start, false);
+    const snapshot = getSnapshot();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify(snapshot));
   }
 
   if (url.pathname === "/api/markets") {
@@ -54,7 +63,9 @@ const server = http.createServer(async (req, res) => {
       const userKey = url.searchParams.get("openseaKey") || "";
       if (userKey) scanner.updateApiKey(userKey);
       const spreads = await scanner.spreads(force);
-      stats.scanCount++;
+      const duration = Date.now() - start;
+      trackScan(spreads.length, duration, true);
+      trackRequest("/api/markets", duration, false);
       console.log(`[scan] Found ${spreads.length} markets`);
       const data = serialize(spreads.map((s) => ({
         marketId: s.state.info.marketId,
@@ -100,7 +111,10 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify(data));
     } catch (e) {
+      const duration = Date.now() - start;
       console.error("[scan] Error:", e.message);
+      trackScan(0, duration, false);
+      trackRequest("/api/markets", duration, true, "SCAN_FAILED");
       res.writeHead(500, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({
         error: { code: "SCAN_FAILED", message: "anvil scan failed: " + e.message, doc_url: "https://github.com/fadeonrh/fade-anvil-dashboard#api-endpoints" },
@@ -112,6 +126,7 @@ const server = http.createServer(async (req, res) => {
   const publicDir = path.resolve(__dirname, "../public");
   if (url.pathname === "/" || url.pathname === "/index.html") {
     const html = await fs.readFile(path.join(publicDir, "index.html"), "utf8");
+    trackRequest(url.pathname, Date.now() - start, false);
     res.writeHead(200, { "Content-Type": "text/html" });
     return res.end(html);
   }
@@ -133,12 +148,14 @@ const server = http.createServer(async (req, res) => {
         ".ico": "image/x-icon",
       };
       const content = await fs.readFile(filePath);
+      trackRequest(url.pathname, Date.now() - start, false);
       res.writeHead(200, { "Content-Type": mimeTypes[ext] || "application/octet-stream" });
       return res.end(content);
     }
   } catch {}
 
   // 404
+  trackRequest(url.pathname, Date.now() - start, true, "NOT_FOUND");
   if (req.headers.accept?.includes("text/html")) {
     try {
       const html = await fs.readFile(path.join(publicDir, "404.html"), "utf8");

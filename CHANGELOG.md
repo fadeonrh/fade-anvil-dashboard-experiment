@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-15
+
+### Added
+- Full analytics dashboard at `/analytics.html`
+- `src/lib/analytics.ts` — in-memory analytics engine (request tracking, scan stats, response time percentiles, error breakdown)
+- `GET /api/analytics` — returns full analytics snapshot
+- Request rate chart (canvas, last 60 minutes)
+- Endpoint breakdown table with request share bars
+- Response time percentiles (P50, P95, P99, AVG)
+- Scan statistics (count, avg duration, markets per scan)
+- Error breakdown by code
+- Navigation link to analytics in main dashboard header
+- Theme toggle on analytics page (dark/light)
+
+### Changed
+- `api/health.ts` — uses analytics module for uptime/counts
+- `api/markets.ts` — tracks request duration, scan success/failure, errors
+- `bin/fade-anvil.js` — tracks all requests, scans, errors, static files, 404s
+- Version bumped to 1.3.0
+
 ## [1.2.0] - 2026-09-15
 
 ### Added

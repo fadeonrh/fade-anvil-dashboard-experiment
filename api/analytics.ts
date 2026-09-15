@@ -1,8 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { getSnapshot, trackRequest } from "../src/lib/analytics.js";
+import { getSnapshot } from "../src/lib/analytics.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const start = Date.now();
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -12,14 +11,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const snapshot = getSnapshot();
-  trackRequest("/api/health", Date.now() - start, false);
-
-  return res.status(200).json({
-    ok: true,
-    timestamp: Date.now(),
-    version: "1.2.0",
-    uptime: snapshot.uptime,
-    scanCount: snapshot.scans.count,
-    requestCount: snapshot.requests.total,
-  });
+  return res.status(200).json(snapshot);
 }

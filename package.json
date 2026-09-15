@@ -1,6 +1,6 @@
 {
   "name": "fade-anvil-dashboard",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "private": true,
   "type": "module",
   "description": "Public Anvil AMM dashboard for Robinhood Chain (4663) — real-time spread data",

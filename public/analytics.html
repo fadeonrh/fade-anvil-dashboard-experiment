@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analytics — FADE</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Ctext x='8' y='12' font-family='monospace' font-size='11' fill='%2300ff9d' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script>
+    if (localStorage.getItem('fade-theme') === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --neon: #00ff41;
+      --neon-dim: #00cc33;
+      --neon-glow: rgba(0, 255, 65, 0.4);
+      --neon-glow-strong: rgba(0, 255, 65, 0.7);
+      --bg: #000000;
+      --card: #0a0a0a;
+      --card-border: #1a1a1a;
+      --card-border-glow: rgba(0, 255, 65, 0.15);
+      --text: #e0e0e0;
+      --text-dim: #666666;
+      --red: #ff0040;
+      --red-glow: rgba(255, 0, 64, 0.4);
+      --yellow: #ffcc00;
+      --yellow-glow: rgba(255, 204, 0, 0.3);
+      --border-soft: rgba(255, 255, 255, 0.04);
+      --bg-soft: rgba(255, 255, 255, 0.03);
+      --bg-positive: rgba(0, 255, 65, 0.1);
+      --bg-negative: rgba(255, 0, 64, 0.1);
+      --scanline: rgba(0, 255, 65, 0.015);
+      --mono: 'Share Tech Mono', 'SF Mono', 'Fira Code', monospace;
+      --display: 'Orbitron', sans-serif;
+    }
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --neon: #008f36;
+      --neon-dim: #007a2e;
+      --neon-glow: rgba(0, 143, 54, 0.25);
+      --neon-glow-strong: rgba(0, 143, 54, 0.4);
+      --bg: #f2f3f5;
+      --card: #ffffff;
+      --card-border: #d8dade;
+      --card-border-glow: rgba(0, 143, 54, 0.15);
+      --text: #1a1c1e;
+      --text-dim: #5f6b73;
+      --red: #d50032;
+      --red-glow: rgba(213, 0, 50, 0.25);
+      --yellow: #a07d00;
+      --yellow-glow: rgba(160, 125, 0, 0.25);
+      --border-soft: rgba(0, 0, 0, 0.08);
+      --bg-soft: rgba(0, 0, 0, 0.04);
+      --bg-positive: rgba(0, 143, 54, 0.12);
+      --bg-negative: rgba(213, 0, 50, 0.1);
+      --scanline: rgba(0, 0, 0, 0.02);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--mono);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, var(--scanline) 2px, var(--scanline) 4px);
+      pointer-events: none;
+      z-index: 9999;
+    }
+    .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    :focus-visible { outline: 2px solid var(--neon); outline-offset: 2px; }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--card-border);
+      flex-wrap: wrap;
+      gap: 16px;
+      position: relative;
+    }
+    header::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--neon), transparent);
+      box-shadow: 0 0 15px var(--neon-glow), 0 0 30px var(--neon-glow);
+    }
+    .logo-wrap { display: flex; align-items: center; gap: 16px; }
+    .logo-svg {
+      height: 48px;
+      filter: drop-shadow(0 0 8px var(--neon-glow-strong)) drop-shadow(0 0 20px var(--neon-glow));
+    }
+    h1 {
+      font-family: var(--display);
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--neon);
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      text-shadow: 0 0 10px var(--neon-glow), 0 0 20px var(--neon-glow);
+    }
+    .nav-links { display: flex; gap: 12px; align-items: center; }
+    .nav-links a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--neon); }
+    .nav-links a.active { color: var(--neon); }
+
+    /* Cards */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      padding: 20px;
+      position: relative;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--card-border-glow), transparent);
+    }
+    .grid { display: grid; gap: 16px; }
+    .grid-4 { grid-template-columns: repeat(4, 1fr); }
+    .grid-2 { grid-template-columns: repeat(2, 1fr); }
+    .grid-1 { grid-template-columns: 1fr; }
+
+    /* Stat cards */
+    .stat-label {
+      font-size: 0.6rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+    .stat-value {
+      font-family: var(--display);
+      font-size: 2rem;
+      font-weight: 900;
+      color: var(--neon);
+      text-shadow: 0 0 10px var(--neon-glow);
+    }
+    .stat-value.red { color: var(--red); text-shadow: 0 0 10px var(--red-glow); }
+    .stat-value.yellow { color: var(--yellow); text-shadow: 0 0 10px var(--yellow-glow); }
+    .stat-sub {
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    /* Chart */
+    .chart-container {
+      position: relative;
+      width: 100%;
+      height: 200px;
+    }
+    .chart-container canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+    th {
+      color: var(--neon-dim);
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--card-border);
+    }
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-soft);
+      font-variant-numeric: tabular-nums;
+    }
+    tr:hover td { background: var(--bg-positive); }
+    .mono { font-family: var(--mono); }
+    .dim { color: var(--text-dim); }
+    .positive { color: var(--neon); }
+    .negative { color: var(--red); }
+
+    /* Bar */
+    .bar-bg {
+      width: 100%;
+      height: 6px;
+      background: var(--bg-soft);
+      border-radius: 1px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      background: var(--neon);
+      border-radius: 1px;
+      transition: width 0.3s;
+    }
+    .bar-fill.red { background: var(--red); }
+
+    /* Buttons */
+    .btn {
+      padding: 8px 16px;
+      border: 1px solid var(--card-border);
+      border-radius: 2px;
+      font-family: var(--mono);
+      font-weight: 500;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: transparent;
+      color: var(--text);
+      min-height: 44px;
+    }
+    .btn:hover { border-color: var(--neon); color: var(--neon); }
+    .btn:active { transform: scale(0.97); }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .grid-4 { grid-template-columns: repeat(2, 1fr); }
+      .grid-2 { grid-template-columns: 1fr; }
+      header { flex-direction: column; align-items: flex-start; }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" x-data="analytics()" x-init="init()">
+    <header>
+      <div class="logo-wrap">
+        <a href="/" class="logo-link">
+          <svg class="logo-svg" viewBox="0 0 400 120" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <filter id="glow"><feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              <linearGradient id="flare" x1="0" y1="0.5" x2="1" y2="0.5">
+                <stop offset="0%" stop-color="transparent"/><stop offset="40%" stop-color="#00ff41" stop-opacity="0.6"/><stop offset="50%" stop-color="#ffffff" stop-opacity="1"/><stop offset="60%" stop-color="#00ff41" stop-opacity="0.6"/><stop offset="100%" stop-color="transparent"/>
+              </linearGradient>
+            </defs>
+            <text x="20" y="82" font-family="Orbitron, sans-serif" font-weight="900" font-size="78" fill="var(--logo)" filter="url(#glow)">F</text>
+            <text x="95" y="82" font-family="Orbitron, sans-serif" font-weight="900" font-size="78" fill="var(--logo)" filter="url(#glow)">A</text>
+            <text x="180" y="82" font-family="Orbitron, sans-serif" font-weight="900" font-size="78" fill="var(--logo)" filter="url(#glow)">D</text>
+            <text x="268" y="82" font-family="Orbitron, sans-serif" font-weight="900" font-size="78" fill="var(--logo)" filter="url(#glow)">E</text>
+            <rect x="0" y="52" width="400" height="2" fill="url(#flare)" filter="url(#glow-strong)"/>
+            <circle cx="200" cy="53" r="3" fill="white" filter="url(#glow-strong)" opacity="0.9"/>
+            <circle cx="200" cy="53" r="8" fill="#00ff41" opacity="0.3" filter="url(#glow-strong)"/>
+          </svg>
+        </a>
+        <h1>ANALYTICS</h1>
+      </div>
+      <div class="nav-links">
+        <a href="/">DASHBOARD</a>
+        <a href="/analytics.html" class="active">ANALYTICS</a>
+        <button class="btn" style="padding:6px 12px;font-size:0.65rem;min-height:auto;"
+                @click="toggleTheme()" x-text="theme === 'light' ? '☀ LIGHT' : '☾ DARK'"></button>
+      </div>
+    </header>
+
+    <!-- Stat Cards -->
+    <div class="grid grid-4" style="margin-bottom:16px;">
+      <div class="card" style="text-align:center;">
+        <div class="stat-label">TOTAL REQUESTS</div>
+        <div class="stat-value" x-text="formatNumber(data?.requests?.total || 0)"></div>
+        <div class="stat-sub" x-text="rpm + ' req/min'"></div>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div class="stat-label">SCANS PERFORMED</div>
+        <div class="stat-value" x-text="data?.scans?.count || 0"></div>
+        <div class="stat-sub" x-text="(data?.scans?.success || 0) + ' success / ' + (data?.scans?.failed || 0) + ' failed'"></div>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div class="stat-label">ERRORS</div>
+        <div class="stat-value red" x-text="data?.errors?.total || 0"></div>
+        <div class="stat-sub" x-text="errorRate + '% error rate'"></div>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div class="stat-label">UPTIME</div>
+        <div class="stat-value" x-text="formatUptime(data?.uptime || 0)"></div>
+        <div class="stat-sub" x-text="'since ' + formatTime(data?.startedAt)"></div>
+      </div>
+    </div>
+
+    <!-- Request Rate Chart -->
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div class="stat-label" style="margin-bottom:0;">REQUEST RATE (LAST 60 MIN)</div>
+        <span class="hint dim" style="font-size:0.6rem;" x-text="'avg ' + rpm + '/min'"></span>
+      </div>
+      <div class="chart-container">
+        <canvas id="requestChart"></canvas>
+      </div>
+    </div>
+
+    <div class="grid grid-2" style="margin-bottom:16px;">
+      <!-- Response Times -->
+      <div class="card">
+        <div class="stat-label" style="margin-bottom:12px;">RESPONSE TIMES</div>
+        <table>
+          <tr>
+            <td class="dim">P50</td>
+            <td class="positive" x-text="(data?.responseTimes?.p50 || 0) + 'ms'"></td>
+          </tr>
+          <tr>
+            <td class="dim">P95</td>
+            <td class="positive" x-text="(data?.responseTimes?.p95 || 0) + 'ms'"></td>
+          </tr>
+          <tr>
+            <td class="dim">P99</td>
+            <td class="positive" x-text="(data?.responseTimes?.p99 || 0) + 'ms'"></td>
+          </tr>
+          <tr>
+            <td class="dim">AVG</td>
+            <td x-text="(data?.responseTimes?.avg || 0) + 'ms'"></td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Scan Stats -->
+      <div class="card">
+        <div class="stat-label" style="margin-bottom:12px;">SCAN STATISTICS</div>
+        <table>
+          <tr>
+            <td class="dim">Total Scans</td>
+            <td x-text="data?.scans?.count || 0"></td>
+          </tr>
+          <tr>
+            <td class="dim">Avg Markets/Scan</td>
+            <td x-text="data?.markets?.avgPerScan || 0"></td>
+          </tr>
+          <tr>
+            <td class="dim">Total Scan Time</td>
+            <td x-text="formatMs(data?.scans?.totalTimeMs || 0)"></td>
+          </tr>
+          <tr>
+            <td class="dim">Avg Scan Duration</td>
+            <td x-text="avgScanDuration + 'ms'"></td>
+          </tr>
+          <tr>
+            <td class="dim">Last Scan</td>
+            <td x-text="data?.scans?.lastScanAt ? formatTime(data.scans.lastScanAt) : 'never'"></td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Endpoint Breakdown -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="stat-label" style="margin-bottom:12px;">ENDPOINT BREAKDOWN</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Endpoint</th>
+            <th>Requests</th>
+            <th>Errors</th>
+            <th>Error Rate</th>
+            <th>Avg Time</th>
+            <th style="width:20%;">Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="(stats, endpoint) in data?.requests?.byEndpoint || {}" :key="endpoint">
+            <tr>
+              <td class="mono" x-text="endpoint"></td>
+              <td x-text="stats.count"></td>
+              <td :class="stats.errors > 0 ? 'negative' : 'dim'" x-text="stats.errors"></td>
+              <td :class="stats.errors > 0 ? 'negative' : 'dim'" x-text="stats.count > 0 ? ((stats.errors / stats.count) * 100).toFixed(1) + '%' : '0%'"></td>
+              <td x-text="stats.count > 0 ? Math.round(stats.totalTimeMs / stats.count) + 'ms' : '-'"></td>
+              <td>
+                <div class="bar-bg">
+                  <div class="bar-fill" :style="'width:' + (stats.count / maxEndpointCount * 100) + '%'"></div>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Error Breakdown -->
+    <div class="card" x-show="Object.keys(data?.errors?.byCode || {}).length > 0" style="margin-bottom:16px;">
+      <div class="stat-label" style="margin-bottom:12px;">ERROR BREAKDOWN</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Error Code</th>
+            <th>Count</th>
+            <th style="width:40%;">Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="(count, code) in data?.errors?.byCode || {}" :key="code">
+            <tr>
+              <td class="mono negative" x-text="code"></td>
+              <td x-text="count"></td>
+              <td>
+                <div class="bar-bg">
+                  <div class="bar-fill red" :style="'width:' + (count / data.errors.total * 100) + '%'"></div>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Footer -->
+    <div style="text-align:center;padding:20px 0;font-size:0.6rem;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;">
+      FADE · ROBINHOOD CHAIN 4663 · ANALYTICS
+    </div>
+  </div>
+
+  <script>
+    function analytics() {
+      return {
+        data: null,
+        theme: localStorage.getItem('fade-theme') || 'dark',
+        rpm: 0,
+        errorRate: 0,
+        avgScanDuration: 0,
+        maxEndpointCount: 1,
+
+        async init() {
+          await this.fetch();
+          setInterval(() => this.fetch(), 5000);
+          this.drawChart();
+        },
+
+        async fetch() {
+          try {
+            const res = await fetch('/api/analytics');
+            this.data = await res.json();
+            this.compute();
+            this.drawChart();
+          } catch (e) {
+            console.error('Analytics fetch failed:', e);
+          }
+        },
+
+        compute() {
+          if (!this.data) return;
+          const total = this.data.requests?.total || 1;
+          const errors = this.data.errors?.total || 0;
+          this.errorRate = ((errors / total) * 100).toFixed(1);
+          const scans = this.data.scans?.count || 0;
+          const scanTime = this.data.scans?.totalTimeMs || 0;
+          this.avgScanDuration = scans > 0 ? Math.round(scanTime / scans) : 0;
+
+          // Requests per minute (average of last 60 min)
+          const buckets = this.data.requests?.perMinute || [];
+          const sum = buckets.reduce((a, b) => a + b, 0);
+          this.rpm = Math.round(sum / Math.max(buckets.filter(b => b > 0).length, 1));
+
+          // Max endpoint count for bar chart
+          const endpoints = this.data.requests?.byEndpoint || {};
+          this.maxEndpointCount = Math.max(...Object.values(endpoints).map(e => e.count), 1);
+        },
+
+        drawChart() {
+          const canvas = document.getElementById('requestChart');
+          if (!canvas || !this.data) return;
+          const ctx = canvas.getContext('2d');
+          const rect = canvas.parentElement.getBoundingClientRect();
+          canvas.width = rect.width * 2;
+          canvas.height = rect.height * 2;
+          ctx.scale(2, 2);
+          const w = rect.width;
+          const h = rect.height;
+
+          ctx.clearRect(0, 0, w, h);
+
+          const buckets = this.data.requests?.perMinute || [];
+          const maxVal = Math.max(...buckets, 1);
+          const barWidth = (w - 40) / buckets.length;
+          const padding = 30;
+
+          // Grid lines
+          ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+          ctx.lineWidth = 0.5;
+          for (let i = 0; i <= 4; i++) {
+            const y = padding + ((h - padding * 2) / 4) * i;
+            ctx.beginPath();
+            ctx.moveTo(padding, y);
+            ctx.lineTo(w, y);
+            ctx.stroke();
+          }
+
+          // Bars
+          const isLight = this.theme === 'light';
+          buckets.forEach((val, i) => {
+            const barH = (val / maxVal) * (h - padding * 2);
+            const x = padding + i * barWidth;
+            const y = h - padding - barH;
+
+            ctx.fillStyle = isLight ? 'rgba(0, 143, 54, 0.6)' : 'rgba(0, 255, 65, 0.6)';
+            ctx.fillRect(x + 1, y, barWidth - 2, barH);
+
+            // Glow top
+            if (barH > 0) {
+              ctx.fillStyle = isLight ? 'rgba(0, 143, 54, 0.3)' : 'rgba(0, 255, 65, 0.3)';
+              ctx.fillRect(x + 1, y, barWidth - 2, 2);
+            }
+          });
+
+          // Labels
+          ctx.fillStyle = isLight ? '#5f6b73' : '#666666';
+          ctx.font = '10px "Share Tech Mono"';
+          ctx.textAlign = 'right';
+          for (let i = 0; i <= 4; i++) {
+            const val = Math.round(maxVal - (maxVal / 4) * i);
+            const y = padding + ((h - padding * 2) / 4) * i;
+            ctx.fillText(val, padding - 4, y + 3);
+          }
+
+          // Time labels
+          ctx.textAlign = 'center';
+          ctx.fillText('-60m', padding, h - 8);
+          ctx.fillText('-30m', padding + (w - padding) / 2, h - 8);
+          ctx.fillText('now', w - 10, h - 8);
+        },
+
+        toggleTheme() {
+          this.theme = this.theme === 'dark' ? 'light' : 'dark';
+          localStorage.setItem('fade-theme', this.theme);
+          document.documentElement.setAttribute('data-theme', this.theme);
+          this.drawChart();
+        },
+
+        formatNumber(n) {
+          return n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(1) + 'K' : n.toString();
+        },
+
+        formatUptime(s) {
+          if (s < 60) return s + 's';
+          if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+          if (s < 86400) return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+          return Math.floor(s / 86400) + 'd ' + Math.floor((s % 86400) / 3600) + 'h';
+        },
+
+        formatMs(ms) {
+          if (ms < 1000) return Math.round(ms) + 'ms';
+          if (ms < 60000) return (ms / 1000).toFixed(1) + 's';
+          return Math.round(ms / 60000) + 'min';
+        },
+
+        formatTime(ts) {
+          if (!ts) return '-';
+          return new Date(ts).toLocaleTimeString();
+        },
+      };
+    }
+  </script>
+</body>
+</html>

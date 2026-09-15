@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createThrottledClient } from "../src/lib/config.js";
 import { AnvilScanner } from "../src/lib/anvil-combine.js";
-import { incrementScanCount, incrementRequestCount } from "./health.js";
+import { trackRequest, trackScan } from "../src/lib/analytics.js";
 
 // Module-level singleton — persists across warm invocations
 let scanner: AnvilScanner | null = null;
@@ -27,10 +27,10 @@ function serialize<T>(obj: T): T {
 const DOC_URL = "https://github.com/fadeonrh/fade-anvil-dashboard#api-endpoints";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const start = Date.now();
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  incrementRequestCount();
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
@@ -46,7 +46,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const spreads = await anvilScanner.spreads(force);
-    incrementScanCount();
+    const duration = Date.now() - start;
+    trackScan(spreads.length, duration, true);
+    trackRequest("/api/markets", duration, false);
 
     return res.status(200).json(
       serialize(
@@ -94,7 +96,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ),
     );
   } catch (e) {
+    const duration = Date.now() - start;
     console.error("Anvil scan failed:", e);
+    trackScan(0, duration, false);
+    trackRequest("/api/markets", duration, true, "SCAN_FAILED");
     return res.status(500).json({
       error: {
         code: "SCAN_FAILED",
