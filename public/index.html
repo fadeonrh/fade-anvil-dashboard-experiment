@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FADE — Anvil Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23000'/%3E%3Ctext x='8' y='12' font-family='monospace' font-size='11' fill='%2300ff9d' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E">
+  <style>[x-cloak] { display: none !important; }</style>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script>
+    if (localStorage.getItem('fade-theme') === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --neon: #00ff41;
+      --neon-dim: #00cc33;
+      --neon-glow: rgba(0, 255, 65, 0.4);
+      --neon-glow-strong: rgba(0, 255, 65, 0.7);
+      --bg: #000000;
+      --card: #0a0a0a;
+      --card-border: #1a1a1a;
+      --card-border-glow: rgba(0, 255, 65, 0.15);
+      --text: #e0e0e0;
+      --text-dim: #666666;
+      --red: #ff0040;
+      --red-glow: rgba(255, 0, 64, 0.4);
+      --yellow: #ffcc00;
+      --yellow-glow: rgba(255, 204, 0, 0.3);
+      --border-soft: rgba(255, 255, 255, 0.04);
+      --bg-soft: rgba(255, 255, 255, 0.03);
+      --bg-positive: rgba(0, 255, 65, 0.1);
+      --bg-negative: rgba(255, 0, 64, 0.1);
+      --scanline: rgba(0, 255, 65, 0.015);
+      --logo: #ffffff;
+      --mono: 'Share Tech Mono', 'SF Mono', 'Fira Code', monospace;
+      --display: 'Orbitron', sans-serif;
+    }
+
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --neon: #008f36;
+      --neon-dim: #007a2e;
+      --neon-glow: rgba(0, 143, 54, 0.25);
+      --neon-glow-strong: rgba(0, 143, 54, 0.4);
+      --bg: #f2f3f5;
+      --card: #ffffff;
+      --card-border: #d8dade;
+      --card-border-glow: rgba(0, 143, 54, 0.15);
+      --text: #1a1c1e;
+      --text-dim: #5f6b73;
+      --red: #d50032;
+      --red-glow: rgba(213, 0, 50, 0.25);
+      --yellow: #a07d00;
+      --yellow-glow: rgba(160, 125, 0, 0.25);
+      --border-soft: rgba(0, 0, 0, 0.08);
+      --bg-soft: rgba(0, 0, 0, 0.04);
+      --bg-positive: rgba(0, 143, 54, 0.12);
+      --bg-negative: rgba(213, 0, 50, 0.1);
+      --scanline: rgba(0, 0, 0, 0.02);
+      --logo: #101214;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :focus-visible {
+      outline: 2px solid var(--neon);
+      outline-offset: 2px;
+    }
+    body {
+      font-family: var(--mono);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Scanline overlay */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        var(--scanline) 2px,
+        var(--scanline) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+    /* ── HEADER ── */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--card-border);
+      flex-wrap: wrap;
+      gap: 16px;
+      position: relative;
+    }
+    header::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--neon), transparent);
+      box-shadow: 0 0 15px var(--neon-glow), 0 0 30px var(--neon-glow);
+    }
+
+    .logo-wrap {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .logo-svg {
+      height: 48px;
+      filter: drop-shadow(0 0 8px var(--neon-glow-strong)) drop-shadow(0 0 20px var(--neon-glow));
+    }
+    .logo-link {
+      display: flex;
+      align-items: center;
+      text-decoration: none;
+    }
+    .logo-link:hover .logo-svg {
+      filter: drop-shadow(0 0 12px var(--neon-glow-strong)) drop-shadow(0 0 30px var(--neon-glow)) brightness(1.2);
+    }
+    .social-links {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .social-links a {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 4px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-dim);
+      text-decoration: none;
+      transition: color 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+    .social-links a:hover {
+      color: var(--neon);
+      border-color: var(--neon);
+      box-shadow: 0 0 10px var(--neon-glow);
+    }
+    .social-links a svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
+    .ca-line {
+      font-family: var(--mono);
+      font-size: 0.625rem;
+      color: var(--text-dim);
+      letter-spacing: 0.5px;
+      margin-top: 2px;
+      opacity: 0.7;
+      word-break: break-all;
+    }
+    h1 {
+      font-family: var(--display);
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--neon);
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      text-shadow: 0 0 10px var(--neon-glow), 0 0 20px var(--neon-glow);
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 2px;
+      font-weight: 500;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .status.running {
+      background: var(--bg-positive);
+      color: var(--neon);
+      border: 1px solid var(--neon-dim);
+      box-shadow: 0 0 10px var(--neon-glow), inset 0 0 10px var(--bg-positive);
+    }
+    .status.stopped {
+      background: var(--bg-negative);
+      color: var(--red);
+      border: 1px solid var(--red);
+      box-shadow: 0 0 10px var(--red-glow);
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.6rem;
+      padding: 2px 8px;
+      border-radius: 2px;
+      background: transparent;
+      border: 1px solid var(--card-border);
+      color: var(--text-dim);
+      margin-left: 8px;
+      vertical-align: middle;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .badge.live { color: var(--neon); border-color: var(--neon-dim); text-shadow: 0 0 6px var(--neon-glow); }
+    .badge.stale { color: var(--yellow); border-color: var(--yellow); }
+    .badge.none { color: var(--red); border-color: var(--red); }
+
+    /* ── GRID ── */
+    .grid { display: flex; flex-wrap: wrap; gap: 16px; }
+    .grid > .card { flex: 1 1 400px; min-width: 0; }
+
+    /* Anvil markets table needs a full row: spans all 3 columns */
+    .grid > .anvil-wide { flex: 1 1 100%; }
+
+    /* ── CARDS ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 2px;
+      padding: 20px;
+      position: relative;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .card:hover {
+      border-color: var(--neon-dim);
+      box-shadow: 0 0 20px var(--neon-glow);
+    }
+    .card h2 {
+      font-family: var(--display);
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: var(--neon-dim);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    /* ── METRICS ── */
+    .metric {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border-soft);
+      gap: 12px;
+    }
+    .metric:last-child { border-bottom: none; }
+    .metric-label { color: var(--text-dim); font-size: 0.8rem; }
+    .metric-value {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-align: right;
+    }
+    .metric-value.positive { color: var(--neon); text-shadow: 0 0 6px var(--neon-glow); }
+    .metric-value.negative { color: var(--red); text-shadow: 0 0 6px var(--red-glow); }
+    .metric-value.warning { color: var(--yellow); text-shadow: 0 0 6px var(--yellow-glow); }
+    td.positive, div.positive { color: var(--neon); text-shadow: 0 0 6px var(--neon-glow); }
+    td.negative, div.negative { color: var(--red); }
+    td.stale, div.stale { color: var(--yellow); }
+
+    /* ── BIG NUMBERS ── */
+    .big-number {
+      font-family: var(--display);
+      font-size: 2.2rem;
+      font-weight: 900;
+      letter-spacing: 2px;
+    }
+    .big-number.positive { color: var(--neon); text-shadow: 0 0 15px var(--neon-glow), 0 0 30px var(--neon-glow); }
+    .big-number.negative { color: var(--red); text-shadow: 0 0 15px var(--red-glow); }
+    .big-number.warning { color: var(--yellow); text-shadow: 0 0 15px var(--yellow-glow); }
+
+    .stat-card { background: var(--surface1); border-radius: 10px; padding: 14px 16px; text-align: center; }
+    .stat-card .stat-title { font-size: 0.6rem; letter-spacing: 2px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; }
+    .stat-card .big-number { font-size: 1.4rem; }
+    .stat-card .stat-subtext { font-size: 0.6rem; color: var(--text-dim); margin-top: 4px; }
+
+    /* ── BUTTONS ── */
+    .btn {
+      padding: 10px 20px;
+      border-radius: 2px;
+      border: 1px solid var(--card-border);
+      font-family: var(--mono);
+      font-weight: 500;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: transparent;
+      min-height: 44px;
+    }
+    .btn:active {
+      transform: scale(0.97);
+    }
+    .btn-primary {
+      color: var(--neon);
+      border-color: var(--neon-dim);
+    }
+    .btn-primary:hover {
+      background: var(--bg-positive);
+      box-shadow: 0 0 15px var(--neon-glow), inset 0 0 15px var(--bg-positive);
+    }
+    .btn-danger {
+      color: var(--red);
+      border-color: var(--red);
+    }
+    .btn-danger:hover {
+      background: var(--bg-negative);
+      box-shadow: 0 0 15px var(--red-glow);
+    }
+    .btn-secondary {
+      color: var(--text-dim);
+      border-color: var(--card-border);
+    }
+    .btn-secondary:hover {
+      color: var(--text);
+      border-color: #333;
+      background: var(--bg-soft);
+    }
+    .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .controls { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+
+    /* ── TABLES ── */
+    table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border-soft); }
+    th {
+      color: var(--neon-dim);
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    tr:hover td { background: var(--bg-positive); }
+
+    /* ── LENS FLARE DIVIDER ── */
+    .flare-divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent 5%, var(--neon) 50%, transparent 95%);
+      box-shadow: 0 0 10px var(--neon-glow), 0 0 20px var(--neon-glow);
+      margin: 24px 0;
+      opacity: 0.6;
+    }
+
+    @media (max-width: 768px) {
+      .grid > .card, .grid > .anvil-wide { flex-basis: 100%; }
+      .big-number { font-size: 1.6rem; }
+      h1 { font-size: 0.9rem; letter-spacing: 2px; }
+      header { flex-direction: column; align-items: flex-start; }
+      .social-links { order: 3; }
+      .anvil-wide { overflow-x: auto; }
+      .ca-line { font-size: 0.5rem; }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" x-data="dashboard()" x-init="init()">
+    <header>
+      <div class="logo-wrap">
+        <a href="https://x.com/FadeonRH" target="_blank" rel="noopener" class="logo-link" title="Follow on X">
+          <!-- FADE logo as inline SVG -->
+          <svg class="logo-svg" viewBox="0 0 400 120" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <filter id="glow">
+                <feGaussianBlur stdDeviation="4" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+              <filter id="glow-strong">
+                <feGaussianBlur stdDeviation="8" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+              <linearGradient id="flare" x1="0" y1="0.5" x2="1" y2="0.5">
+                <stop offset="0%" stop-color="transparent"/>
+                <stop offset="40%" stop-color="#00ff41" stop-opacity="0.6"/>
+                <stop offset="50%" stop-color="#ffffff" stop-opacity="1"/>
+                <stop offset="60%" stop-color="#00ff41" stop-opacity="0.6"/>
+                <stop offset="100%" stop-color="transparent"/>
+              </linearGradient>
+            </defs>
+            <!-- F -->
+            <text x="20" y="82" font-family="Orbitron, sans-serif" font-weight="900" font-size="78" fill="var(--logo)" filter="url(#glow)">F</text>
+            <!-- A -->
+            <text x="95" y="82" font-family="Orbitron, sans-serif" font-weight="900" font-size="78" fill="var(--logo)" filter="url(#glow)">A</text>
+            <!-- D -->
+            <text x="180" y="82" font-family="Orbitron, sans-serif" font-weight="900" font-size="78" fill="var(--logo)" filter="url(#glow)">D</text>
+            <!-- E -->
+            <text x="268" y="82" font-family="Orbitron, sans-serif" font-weight="900" font-size="78" fill="var(--logo)" filter="url(#glow)">E</text>
+            <!-- Green lens flare line -->
+            <rect x="0" y="52" width="400" height="2" fill="url(#flare)" filter="url(#glow-strong)"/>
+            <!-- Flare hotspot -->
+            <circle cx="200" cy="53" r="3" fill="white" filter="url(#glow-strong)" opacity="0.9"/>
+            <circle cx="200" cy="53" r="8" fill="#00ff41" opacity="0.3" filter="url(#glow-strong)"/>
+          </svg>
+        </a>
+        <div>
+          <h1>F-A-D-E</h1>
+          <div class="ca-line">0x83C65Dc8857Dc07489cDbeC6Be7A84C35A95fADe</div>
+          <div class="hint" style="font-size:0.6rem;letter-spacing:2px;margin-top:2px;">CHAIN 4663 · ANVIL AMM · OPENSEA FLOORS</div>
+        </div>
+      </div>
+      <div class="social-links">
+        <a href="https://x.com/FadeonRH" target="_blank" rel="noopener" title="X / Twitter">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+        </a>
+        <a href="https://t.me/FadeOnRH" target="_blank" rel="noopener" title="Telegram">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+        </a>
+        <a href="https://github.com/fadeonrh" target="_blank" rel="noopener" title="GitHub">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        </a>
+        <a href="https://dexscreener.com/robinhood/0x7cecd91c194f6ec30b35e4a17da7c52f4411ffe6" target="_blank" rel="noopener" title="Dexscreener">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 13h2v8H3zm4-4h2v12H7zm4-4h2v16h-2zm4 6h2v10h-2zm4-3h2v13h-2z"/></svg>
+        </a>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <span class="hint" x-text="statusLine"></span>
+        <div class="status" :class="loading ? 'stopped' : 'running'" x-text="loading ? '● SCANNING' : '● LIVE'"></div>
+        <button class="btn btn-secondary" style="padding:6px 12px;font-size:0.65rem;"
+                @click="toggleTheme()" x-text="theme === 'light' ? '☀ LIGHT' : '☾ DARK'"></button>
+      </div>
+    </header>
+
+    <!-- Stats summary -->
+    <div class="grid" style="margin-bottom:16px;">
+      <div class="card" style="text-align:center;">
+        <div class="stat-title" style="font-size:0.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;">TOTAL MARKETS</div>
+        <div class="big-number" style="color:var(--neon);" x-text="anvil.length"></div>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div class="stat-title" style="font-size:0.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;">TRADABLE</div>
+        <div class="big-number" style="color:var(--neon);" x-text="anvil.filter(m => m.spread?.tradable).length"></div>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div class="stat-title" style="font-size:0.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;">DEAD MARKETS</div>
+        <div class="big-number" style="color:var(--red);" x-text="anvil.filter(m => m.spread?.liquidityClass === 'dead').length"></div>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div class="stat-title" style="font-size:0.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;">BEST SPREAD</div>
+        <div class="big-number" :class="bestSpread > 0 ? 'positive' : 'negative'" x-text="bestSpread !== null ? '+' + bestSpread.toFixed(4) + ' ETH' : '—'"></div>
+      </div>
+    </div>
+
+    <!-- OpenSea API Key -->
+    <div class="card" style="margin-bottom:16px;">
+      <h2 style="margin-bottom:12px;">OpenSea API Key</h2>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <input type="password" placeholder="Enter your OpenSea API key"
+               x-model="openseaKey" @input="openseaKeyDirty = true"
+               style="flex:1;min-width:250px;padding:10px 14px;background:var(--bg);border:1px solid var(--card-border);border-radius:2px;color:var(--neon);font-family:var(--mono);font-size:0.8rem;">
+        <button class="btn btn-primary" @click="saveOpenSeaKey()" :disabled="!openseaKeyDirty">SAVE KEY</button>
+        <button class="btn btn-secondary" @click="clearOpenSeaKey()" x-show="openseaKey">CLEAR</button>
+        <span style="font-size:0.7rem;" :class="openseaKey ? 'positive' : 'negative'" x-text="openseaKey ? 'Key saved — floor/bid data enabled' : 'No key — OS data disabled'"></span>
+      </div>
+      <div class="hint" style="margin-top:8px;">
+        Free key: <a href="https://docs.opensea.io/reference/request-an-api-key" target="_blank" style="color:var(--neon);">docs.opensea.io</a> — stored in your browser only, never sent to our servers.
+      </div>
+    </div>
+
+    <!-- Anvil Markets -->
+    <details class="card anvil-wide" open>
+      <summary><span class="caret">▶</span><h2 style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;border:none;padding:0;">
+        <span>ANVIL MARKETS <span style="font-size:0.55em;color:var(--text-dim);letter-spacing:1px;">CLUTCH.AMM · SPREAD VS OPENSEA</span></span>
+        <button class="btn" style="padding:4px 12px;font-size:0.65rem;" :disabled="anvilRefreshing"
+                @click.prevent.stop="refreshAnvil(true)" x-text="anvilRefreshing ? 'SCANNING…' : 'RESCAN'"></button>
+      </h2></summary>
+<div x-show="anvilError" class="negative" style="padding:8px 0;" x-text="'⚠ ' + anvilError"></div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Collection</th>
+              <th>Anvil Floor</th>
+              <th>OS Floor</th>
+              <th>Bid</th>
+              <th>Buy / Sell net</th>
+              <th>Net spread (bid)</th>
+              <th>Inv</th>
+              <th>Pool TVL</th>
+              <th style="position:relative;" title="Liquidity in the last 24h — 0 sales = dead market, excluded from trading">24h vol (sales)<span style="font-size:0.6em;cursor:help;margin-left:2px;color:var(--text-dim);">?</span></th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="m in anvil" :key="m.collection">
+              <tr :style="anvilIsHidden(m.collection) ? 'opacity:0.35;' : (m.spread?.liquidityClass === 'dead' ? 'opacity:0.6;' : '')">
+                <td>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <button style="background:none;border:none;cursor:pointer;font-size:0.7rem;color:var(--text-dim);padding:2px;" @click="anvilToggleHide(m.collection)" x-text="anvilIsHidden(m.collection) ? ' Show' : ' Hide'" :title="anvilIsHidden(m.collection) ? 'Show this market' : 'Hide this market'"></button>
+                    <span x-text="m.collectionName || ('Market #' + m.marketId)"></span>
+                    <span x-show="m.specialProject" class="badge" style="font-size:0.5rem;background:#96E600;color:#000;" title="StonkBrokers Special Projects Partner">SP</span>
+                    <span x-show="m.verified" class="badge" style="font-size:0.5rem;background:#2196F3;color:#fff;" :title="m.verifiedNote || 'Verified by Clutch team'">&#10003;</span>
+                    <span x-show="m.liquidityLocked" class="badge" style="font-size:0.5rem;background:#FF9800;color:#000;" :title="m.liquidityLockedNote || 'Liquidity locked'">&#128274;</span>
+                    <span x-show="m.liquiditySoftLocked && !m.liquidityLocked" class="badge" style="font-size:0.5rem;background:#795548;color:#fff;" title="Liquidity time-locked (soft)">&#128274;</span>
+                    <span x-show="m.deprecated" class="badge" style="font-size:0.5rem;background:var(--red);color:#fff;">DEPRECATED</span>
+                  </div>
+                  <div style="font-size:0.55rem;color:var(--text-dim);">
+                    <span x-text="(m.collectionSymbol || '') + ' · fees ' + (m.randomFeeBps/100) + '%/' + (m.specificFeeBps/100) + '% · token ' + (m.tokenSymbol || '?')"></span>
+                    <span x-show="m.clutchTvl > 0" x-text="' · TVL $' + Math.round(m.clutchTvl)"></span>
+                    <span x-show="m.clutchUtilization > 0" x-text="' · util ' + m.clutchUtilization + '%'"></span>
+                  </div>
+                  <div style="font-size:0.5rem;color:var(--text-dim);margin-top:2px;">
+                    <span x-show="m.clutchTotalSupply > 0" x-text="'Supply: ' + formatNum(m.clutchTotalSupply) + ' ' + (m.collectionSymbol || 'tokens')"></span>
+                    <span x-show="m.clutchCirculatingSupply > 0 && m.clutchCirculatingSupply < m.clutchTotalSupply" x-text="' · Circ: ' + formatNum(m.clutchCirculatingSupply)"></span>
+                    <span x-show="m.clutchCirculatingSupply > 0 && m.clutchTotalSupply > 0 && m.clutchCirculatingSupply < m.clutchTotalSupply" x-text="' · Burned: ' + formatNum(m.clutchTotalSupply - m.clutchCirculatingSupply)"></span>
+                    <span x-show="m.clutchApr > 0" x-text="' · APR ' + Number(m.clutchApr).toFixed(1) + '%'"></span>
+                    <span x-show="m.clutchNftCount > 0" x-text="' · ' + formatNum(m.clutchNftCount) + ' NFTs'"></span>
+                  </div>
+                </td>
+                <td x-text="m.anvilFloorEth !== null ? Number(m.anvilFloorEth).toFixed(5) + ' ETH' : '—'"></td>
+                <td x-text="m.osFloorEth !== null ? Number(m.osFloorEth).toFixed(5) + ' ETH' + (m.osFloorListings !== null ? ' (' + m.osFloorListings + ')' : '') : '—'"></td>
+                <td style="font-size:0.65rem;" x-text="m.osFloorOfferEth !== null ? 'bid ' + Number(m.osFloorOfferEth).toFixed(5) + ' ETH' : '—'"></td>
+<td style="font-size:0.65rem;">
+                <span x-text="m.spread?.buyTotalEth !== null && m.spread?.buyTotalEth !== undefined ? Number(m.spread.buyTotalEth).toFixed(6) : '—'"></span>
+                <span style="color:var(--text-dim);"> / </span>
+                <span x-text="m.spread?.sellNetOfferEth !== null && m.spread?.sellNetOfferEth !== undefined ? Number(m.spread.sellNetOfferEth).toFixed(6) : (m.spread?.sellNetEth !== null && m.spread?.sellNetEth !== undefined ? Number(m.spread.sellNetEth).toFixed(6) : '—')"></span>
+                <span style="font-size:0.55rem;color:var(--text-dim);" x-show="m.spread?.sellNetOfferEth !== null && m.spread?.sellNetOfferEth !== undefined" x-text="' (floor ' + Number(m.spread.sellNetEth).toFixed(6) + ')'"></span>
+                <div style="font-size:0.55rem;color:var(--text-dim);" x-text="m.spread?.gasEth !== null && m.spread?.gasEth !== undefined ? 'gas ' + Number(m.spread.gasEth).toFixed(5) + ' ETH' : ''"></div>
+              </td>
+                <td :class="anvilSpreadClass(m)">
+                  <div x-text="m.spread?.netSpreadOfferEth !== null && m.spread?.netSpreadOfferEth !== undefined ? ((Number(m.spread.netSpreadOfferEth) >= 0 ? '+' : '') + Number(m.spread.netSpreadOfferEth).toFixed(6) + ' ETH') : (m.spread?.netSpreadEth !== null && m.spread?.netSpreadEth !== undefined ? ((Number(m.spread.netSpreadEth) >= 0 ? '+' : '') + Number(m.spread.netSpreadEth).toFixed(6) + ' ETH') : '—')"></div>
+                  <div style="font-size:0.55rem;" x-text="anvilPctLabel(m)"></div>
+                  <div style="font-size:0.5rem;color:var(--text-dim);" x-show="m.spread?.netSpreadOfferEth !== null && m.spread?.netSpreadOfferEth !== undefined" x-text="'at floor ' + ((Number(m.spread.netSpreadEth) >= 0 ? '+' : '') + Number(m.spread.netSpreadEth).toFixed(6)) + ' ETH'"></div>
+                </td>
+                <td x-text="m.inventorySize"></td>
+                <td x-text="m.poolTvlUsd !== null ? '$' + Math.round(Number(m.poolTvlUsd)/1000) + 'k' : '—'"></td>
+                <td style="font-size:0.65rem;" :title="m.spread?.liquidityClass === 'dead' ? '0 sales/24h — excluded from trading' : (m.sales24h === null ? 'Liquidity data unavailable' : null)">
+                  <template x-if="m.spread?.liquidityClass === 'dead'">
+                    <span style="color:var(--red);">0 (0)</span>
+                  </template>
+                  <template x-if="m.spread?.liquidityClass === 'thin'">
+                    <span x-text="Number(m.volume24hEth).toFixed(3) + ' / ' + m.sales24h"></span>
+                  </template>
+                  <template x-if="m.spread?.liquidityClass === 'liquid'">
+                    <span x-text="Number(m.volume24hEth).toFixed(3) + ' / ' + m.sales24h"></span>
+                  </template>
+                  <template x-if="m.spread?.liquidityClass === null">
+                    <span style="color:var(--text-dim);" title="Liquidity data unavailable">?</span>
+                  </template>
+                </td>
+                <td>
+                  <span class="badge" x-show="m.spread?.liquidityClass === 'dead'" style="font-size:0.55rem;">DEAD</span>
+                  <div :class="m.spread?.tradable ? 'positive' : ''" style="font-size:0.65rem;" x-text="m.spread?.tradable ? 'TRADABLE' : (m.spread?.reason || '—')"></div>
+                  <div x-show="m.spread?.warnings?.length" style="font-size:0.55rem;color:var(--text-dim);" x-text="'⚠ ' + (m.spread.warnings || []).join(' · ')"></div>
+                </td>
+              </tr>
+            </template>
+            <tr x-show="anvil.length === 0 && !anvilError">
+              <td colspan="10" style="text-align:center;color:var(--text-dim);padding:24px;"><span style="animation:pulse 1.5s ease-in-out infinite;">Scanning Anvil factory…</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <div class="flare-divider"></div>
+
+    <div style="text-align:center;padding:32px 0 16px;color:var(--text-dim);font-size:0.6rem;letter-spacing:3px;text-transform:uppercase;">
+      FADE · Robinhood Chain 4663 · Anvil AMM Dashboard
+    </div>
+  </div>
+
+  <script>
+    function dashboard() {
+      return {
+        loading: false,
+        statusLine: '',
+        anvil: [],
+        anvilError: '',
+        anvilRefreshing: false,
+        anvilHidden: JSON.parse(localStorage.getItem('fade-anvil-hidden') || '[]'),
+        theme: localStorage.getItem('fade-theme') === 'light' ? 'light' : 'dark',
+        openseaKey: localStorage.getItem('fade-opensea-key') || '',
+        openseaKeyDirty: false,
+
+        get bestSpread() {
+          const spreads = this.anvil
+            .filter(m => m.spread?.netSpreadEth !== null && m.spread?.netSpreadEth !== undefined)
+            .map(m => Number(m.spread.netSpreadOfferEth ?? m.spread.netSpreadEth));
+          return spreads.length > 0 ? Math.max(...spreads) : null;
+        },
+
+        toggleTheme() {
+          this.theme = this.theme === 'light' ? 'dark' : 'light';
+          localStorage.setItem('fade-theme', this.theme);
+          document.documentElement.setAttribute('data-theme', this.theme);
+        },
+
+        async init() {
+          document.documentElement.setAttribute('data-theme', this.theme);
+          await this.refreshAnvil();
+          setInterval(() => this.refreshAnvil(), 60000);
+        },
+
+        async refreshAnvil(force = false) {
+          if (this.anvilRefreshing) return;
+          this.anvilRefreshing = true;
+          this.loading = true;
+          try {
+            const params = new URLSearchParams();
+            if (force) params.set('force', 'true');
+            if (this.openseaKey) params.set('openseaKey', this.openseaKey);
+            const res = await fetch('/api/markets' + (params.toString() ? '?' + params.toString() : ''));
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'anvil scan failed');
+            this.anvil = data || [];
+            this.sortAnvil();
+            this.anvilError = '';
+            this.statusLine = 'Last scan: ' + new Date().toLocaleTimeString();
+          } catch (e) {
+            this.anvilError = e.message;
+          } finally {
+            this.anvilRefreshing = false;
+            this.loading = false;
+          }
+        },
+
+        anvilSpreadClass(m) {
+          const s = m?.spread;
+          if (!s) return '';
+          const net =
+            s.netSpreadOfferEth !== null && s.netSpreadOfferEth !== undefined
+              ? Number(s.netSpreadOfferEth)
+              : s.netSpreadEth !== null && s.netSpreadEth !== undefined
+                ? Number(s.netSpreadEth)
+                : null;
+          if (net === null) return '';
+          if (s.tradable && net > 0) return 'positive';
+          if (net > 0) return 'stale';
+          return 'negative';
+        },
+
+        anvilPctLabel(m) {
+          const s = m?.spread;
+          if (!s) return '';
+          const pct =
+            s.netSpreadOfferPct !== null && s.netSpreadOfferPct !== undefined
+              ? s.netSpreadOfferPct
+              : s.netSpreadPct;
+          const net =
+            s.netSpreadOfferEth !== null && s.netSpreadOfferEth !== undefined
+              ? Number(s.netSpreadOfferEth)
+              : s.netSpreadEth;
+          if (pct === null || pct === undefined || net === null || net === undefined) return '';
+          if (s.tradable || net < 0) return Number(pct).toFixed(1) + '%';
+          return '';
+        },
+
+        anvilToggleHide(collection) {
+          const idx = this.anvilHidden.indexOf(collection);
+          if (idx >= 0) { this.anvilHidden.splice(idx, 1); } else { this.anvilHidden.push(collection); }
+          localStorage.setItem('fade-anvil-hidden', JSON.stringify(this.anvilHidden));
+          this.sortAnvil();
+        },
+
+        sortAnvil() {
+          this.anvil.sort((a, b) => {
+            const aH = this.anvilIsHidden(a.collection) ? 1 : 0;
+            const bH = this.anvilIsHidden(b.collection) ? 1 : 0;
+            if (aH !== bH) return aH - bH;
+            const aS = a.specialProject ? 1 : 0;
+            const bS = b.specialProject ? 1 : 0;
+            if (aS !== bS) return bS - aS;
+            const aN = a.spread?.netSpreadEth ?? -1;
+            const bN = b.spread?.netSpreadEth ?? -1;
+            return bN - aN;
+          });
+        },
+
+        anvilIsHidden(collection) {
+          return this.anvilHidden.includes(collection);
+        },
+
+        formatNum(n) {
+          if (n === null || n === undefined) return '—';
+          const num = Number(n);
+          if (!isFinite(num)) return '—';
+          if (num >= 1e9) return (num / 1e9).toFixed(2) + 'B';
+          if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+          if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+          return num.toLocaleString('en-US');
+        },
+
+        saveOpenSeaKey() {
+          localStorage.setItem('fade-opensea-key', this.openseaKey);
+          this.openseaKeyDirty = false;
+          this.refreshAnvil(true);
+        },
+
+        clearOpenSeaKey() {
+          this.openseaKey = '';
+          localStorage.removeItem('fade-opensea-key');
+          this.openseaKeyDirty = false;
+          this.refreshAnvil(true);
+        },
+      };
+    }
+  </script>
+</body>
+</html>
