@@ -45,7 +45,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       anvilScanner.updateApiKey(userKey);
     }
 
-    const spreads = await anvilScanner.spreads(force);
+    // Force rescan when user provides a key (cache was built without it)
+    const shouldForce = force || (!!userKey && !process.env.OPENSEA_API_KEY);
+    const spreads = await anvilScanner.spreads(shouldForce);
     const duration = Date.now() - start;
     trackScan(spreads.length, duration, true);
     trackRequest("/api/markets", duration, false);
