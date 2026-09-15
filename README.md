@@ -54,19 +54,24 @@ Dashboard available at `http://localhost:3000`.
 No Vercel CLI required:
 
 ```bash
-npx tsx test-server.ts
+npm start
+# or
+npx tsx bin/fade-anvil.js
 ```
 
-Runs on port `3004`. Serves the frontend and API endpoints directly.
+Runs on port `3004`. Serves the frontend, API endpoints, and static files.
 
 ### Commands
 
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Start Vercel dev server (port 3000) |
+| `npm start` | Standalone server (port 3004) |
 | `npm run build` | Compile TypeScript to `dist/` |
 | `npm run typecheck` | Type-check without emitting |
-| `npx tsx test-server.ts` | Standalone server (port 3004) |
+| `npm test` | Run all tests |
+| `npm run test:unit` | Run unit tests only |
+| `npm run test:integration` | Run integration tests only |
 
 ## Environment Variables
 
@@ -88,6 +93,8 @@ All optional. Copy `.env.example` to `.env` to customize.
 Users can also provide their own key via the dashboard UI (stored in browser localStorage, sent as a query parameter, never stored server-side).
 
 ## API Endpoints
+
+Interactive API documentation available at `/openapi.json` (OpenAPI 3.0 spec).
 
 ### `GET /api/markets`
 
@@ -135,12 +142,15 @@ curl "http://localhost:3004/api/markets?force=true&openseaKey=YOUR_KEY"
     "volume24hEth": 0.153,
     "sales24h": 1,
     "spread": {
-      "netSpreadEth": -0.045,
-      "netSpreadPct": -24.4,
-      "netSpreadOfferEth": 0.145,
-      "buyTotalEth": 0.185,
-      "gasEth": 0.00004,
-      "classification": "tradable"
+      "tradable": true,
+      "reason": "spread 375% / 0.384850 ETH",
+      "netSpreadEth": 0.38485,
+      "netSpreadPct": 375,
+      "netSpreadOfferEth": 0.285,
+      "buyTotalEth": 0.102,
+      "gasEth": 0.00065,
+      "liquidityClass": "liquid",
+      "warnings": []
     },
     "observedAtMs": 1789478666342,
     "verified": true,
@@ -162,45 +172,21 @@ curl "http://localhost:3004/api/markets?force=true&openseaKey=YOUR_KEY"
 ]
 ```
 
-**Response Fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `marketId` | number | On-chain market ID |
-| `collection` | string | NFT collection contract address |
-| `collectionName` | string | Human-readable collection name |
-| `token` | string | Collection token contract address |
-| `amm` | string | Anvil AMM contract address |
-| `tokensPerNFT` | string | Tokens required per NFT (wei) |
-| `anvilFloorEth` | number | Anvil floor price in ETH |
-| `tokenPriceEth` | number | DEX token price in ETH |
-| `poolTvlUsd` | number | Pool TVL in USD |
-| `osFloorEth` | number | OpenSea floor listing in ETH |
-| `osFloorOfferEth` | number | OpenSea highest bid in ETH |
-| `spread` | object | Spread calculation (see below) |
-| `verified` | boolean | Clutch.market verified badge |
-| `liquidityLocked` | boolean | Liquidity lock status |
-
-**Spread Object:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `netSpreadEth` | number | Net spread in ETH (floor exit) |
-| `netSpreadPct` | number | Net spread as percentage |
-| `netSpreadOfferEth` | number | Net spread in ETH (bid exit) |
-| `buyTotalEth` | number | Total buy cost in ETH |
-| `gasEth` | estimated gas cost in ETH |
-| `classification` | string | `"tradable"`, `"thin"`, or `"dead"` |
-
 **Error Response (500):**
 
 ```json
-{ "error": "anvil scan failed: <details>" }
+{
+  "error": {
+    "code": "SCAN_FAILED",
+    "message": "anvil scan failed: <details>",
+    "doc_url": "https://github.com/fadeonrh/fade-anvil-dashboard#api-endpoints"
+  }
+}
 ```
 
 ### `GET /api/health`
 
-Returns liveness probe.
+Returns liveness probe with analytics.
 
 **Example Request:**
 
@@ -213,7 +199,63 @@ curl http://localhost:3004/api/health
 ```json
 {
   "ok": true,
-  "timestamp": 1789478666342
+  "timestamp": 1789478666342,
+  "version": "1.3.0",
+  "uptime": 3600,
+  "scanCount": 42,
+  "requestCount": 1337
+}
+```
+
+### `GET /api/analytics`
+
+Returns full analytics snapshot (in-memory, resets on restart).
+
+**Example Request:**
+
+```bash
+curl http://localhost:3004/api/analytics
+```
+
+**Example Response:**
+
+```json
+{
+  "uptime": 3600,
+  "startedAt": 1789475066342,
+  "now": 1789478666342,
+  "requests": {
+    "total": 1337,
+    "byEndpoint": {
+      "/api/markets": { "count": 42, "errors": 0, "totalTimeMs": 126000, "lastAccessedAt": 1789478666342 },
+      "/api/health": { "count": 1295, "errors": 0, "totalTimeMs": 6475, "lastAccessedAt": 1789478666342 }
+    },
+    "perMinute": [0, 0, 0, 5, 3, 2, 1, 0, 0, 0, "...60 values..."]
+  },
+  "scans": {
+    "count": 42,
+    "success": 42,
+    "failed": 0,
+    "totalMarkets": 924,
+    "minMarkets": 20,
+    "maxMarkets": 25,
+    "totalTimeMs": 630000,
+    "lastScanAt": 1789478666342
+  },
+  "errors": {
+    "total": 0,
+    "byCode": {}
+  },
+  "responseTimes": {
+    "p50": 50,
+    "p95": 200,
+    "p99": 500,
+    "avg": 75
+  },
+  "markets": {
+    "lastCount": 22,
+    "avgPerScan": 22
+  }
 }
 ```
 
@@ -222,8 +264,24 @@ curl http://localhost:3004/api/health
 HTML requests receive a styled 404 page. API requests (no `Accept: text/html`) receive:
 
 ```json
-{ "error": "not found" }
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "not found"
+  }
+}
 ```
+
+## Analytics Dashboard
+
+A full analytics dashboard is available at `/analytics.html`. It displays:
+
+- **Request metrics**: total requests, per-endpoint breakdown, request rate chart (last 60 min)
+- **Scan statistics**: count, success/fail, avg duration, markets per scan
+- **Response times**: P50, P95, P99, AVG percentiles
+- **Error tracking**: count by error code, error rate percentage
+
+Analytics are stored in-memory and reset on server restart.
 
 ## Spread Formula
 
@@ -253,7 +311,9 @@ Markets are classified as:
 - **Backend**: Vercel serverless functions (TypeScript)
 - **On-chain**: viem library for RPC calls with token-bucket rate limiting
 - **Cache**: 5-minute TTL for market scans, 30-minute for stats
+- **Analytics**: In-memory counters (requests, scans, errors, response times)
 - **Data Sources**: Robinhood Chain RPC, DexScreener API, OpenSea V2 API, clutch.market API
+- **API Spec**: OpenAPI 3.0 at `/openapi.json`
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full technical deep-dive.
 
@@ -265,8 +325,11 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full technical deep-dive.
 | Backend | Vercel Serverless, TypeScript |
 | On-chain | viem, Uniswap V3 pool math |
 | APIs | DexScreener, OpenSea V2, clutch.market |
+| Analytics | In-memory counters, canvas charts |
 | Chain | Robinhood Chain (4663) |
 | Deploy | Vercel |
+| CI/CD | GitHub Actions |
+| Testing | Node.js test runner (41 tests) |
 
 ## License
 

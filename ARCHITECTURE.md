@@ -9,6 +9,7 @@ Technical deep-dive into the F-A-D-E Anvil Dashboard.
 │                    Browser (SPA)                         │
 │  Alpine.js ─── fetch /api/markets ──→ render table      │
 │  Auto-refresh 60s · Dark/light · localStorage prefs     │
+│  /analytics.html ──→ fetch /api/analytics ──→ charts    │
 └──────────────────────────┬──────────────────────────────┘
                            │ HTTP
 ┌──────────────────────────▼──────────────────────────────┐
@@ -25,7 +26,13 @@ Technical deep-dive into the F-A-D-E Anvil Dashboard.
 │         ├─ wethInForExactOut()    ← exact swap cost      │
 │         └─ computeAnvilSpread()   ← pure math            │
 │                                                          │
-│  GET /api/health                                         │
+│  GET /api/health  ← uptime, scanCount, requestCount      │
+│  GET /api/analytics ← full analytics snapshot            │
+│                                                          │
+│  src/lib/analytics.ts ← in-memory counters               │
+│    ├─ trackRequest()  ← per-endpoint, per-minute         │
+│    ├─ trackScan()     ← success/fail, duration, markets  │
+│    └─ getSnapshot()   ← P50/P95/P99, error breakdown     │
 └──────────────────────────┬──────────────────────────────┘
                            │ RPC / HTTPS
           ┌────────────────┼────────────────┐
@@ -42,7 +49,8 @@ Technical deep-dive into the F-A-D-E Anvil Dashboard.
 fade-anvil-dashboard/
 ├── api/                          # Vercel serverless handlers
 │   ├── markets.ts                # GET /api/markets — full scan + spread
-│   └── health.ts                 # GET /api/health — liveness probe
+│   ├── health.ts                 # GET /api/health — liveness + analytics
+│   └── analytics.ts              # GET /api/analytics — full snapshot
 │
 ├── src/lib/                      # Core TypeScript library
 │   ├── config.ts                 # RPC client with token-bucket rate limiting
@@ -50,14 +58,29 @@ fade-anvil-dashboard/
 │   ├── anvil.ts                  # Market scanner (704 lines) — the core
 │   ├── anvil-spread.ts           # Pure spread computation (251 lines)
 │   ├── anvil-combine.ts          # AnvilScanner orchestrator class
-│   └── v3-pool.ts                # Uniswap V3 constant-product math
+│   ├── v3-pool.ts                # Uniswap V3 constant-product math
+│   └── analytics.ts              # In-memory analytics engine
+│
+├── bin/
+│   └── fade-anvil.js             # Standalone launcher (npx / npm start)
 │
 ├── public/
-│   └── index.html                # Single-page Alpine.js frontend (~710 lines)
+│   ├── index.html                # Dashboard SPA (~730 lines)
+│   ├── analytics.html            # Analytics dashboard (~350 lines)
+│   ├── 404.html                  # Styled error page
+│   └── openapi.json              # OpenAPI 3.0 spec
 │
-├── test-server.ts                # Standalone HTTP server (port 3004)
+├── tests/
+│   ├── unit/
+│   │   ├── anvil-spread.test.ts  # 22 spread math tests
+│   │   └── v3-pool.test.ts       # 9 V3 pool tests
+│   └── integration/
+│       └── api.test.ts           # 10 API integration tests
+│
+├── .github/workflows/ci.yml     # GitHub Actions CI
+├── test-server.ts                # Legacy standalone server (port 3004)
 ├── vercel.json                   # Build + routing config
-├── package.json                  # Scripts, deps
+├── package.json                  # Scripts, deps, bin entry
 └── tsconfig.json                 # TypeScript config
 ```
 
@@ -123,6 +146,48 @@ Net Spread:
 | clutch.market | 5 min | All-markets metadata |
 | Dedup in-flight | — | Prevents concurrent sweeps |
 
+## Analytics Engine (`analytics.ts`)
+
+In-memory analytics tracking for the dashboard and API.
+
+### Tracked Metrics
+
+| Metric | Granularity | Storage |
+|--------|-------------|---------|
+| Request count | Per-endpoint | `endpoints[name].count` |
+| Request errors | Per-endpoint + error code | `endpoints[name].errors`, `errorCodes[code]` |
+| Response times | Last 10,000 samples | `responseTimesMs[]` (for P50/P95/P99) |
+| Scan count | Total + success/failed | `scanStats` object |
+| Markets per scan | Min/max/avg | `scanStats.totalMarkets` |
+| Request rate | Per-minute buckets (last 60 min) | `minuteBuckets[60]` |
+
+### Data Flow
+
+```
+Request arrives
+  → trackRequest(endpoint, duration, isError, errorCode?)
+    → rotates minute buckets
+    → updates endpoint stats
+    → pushes to responseTimesMs (capped at 10K)
+
+Scan completes
+  → trackScan(marketsCount, duration, success)
+    → updates scanStats
+    → tracks min/max markets
+
+Analytics requested
+  → getSnapshot()
+    → computes percentiles from responseTimesMs
+    → returns full state
+```
+
+### Limitations
+
+- **In-memory only** — resets on server restart
+- **No persistence** — no JSONL, no database
+- **No user tracking** — counts requests, not users
+- **Single instance** — no cross-instance aggregation
+
 ## Rate Limiting
 
 ### RPC (Token Bucket)
@@ -152,7 +217,9 @@ Computes exact WETH input for a given collection token output using the Uniswap 
 
 The legacy model priced tokens linearly (amount × spot × slippage), ignoring price impact. This module gives the true swap cost.
 
-## Frontend (`index.html`)
+## Frontend
+
+### Dashboard (`index.html`)
 
 Single HTML file, zero build step:
 
@@ -163,6 +230,24 @@ Single HTML file, zero build step:
 - **Auto-refresh**: Fetches `/api/markets` every 60 seconds
 - **OpenSea key**: User provides via UI, stored in localStorage, sent as query param
 - **Hide markets**: Individual markets can be hidden, persisted in localStorage
+- **Social links**: X, Telegram, GitHub, Dexscreener (Arcticons logo)
+
+### Analytics (`analytics.html`)
+
+Full analytics dashboard:
+
+- **Stat cards**: Total requests, scans, errors, uptime
+- **Request rate chart**: Canvas bar chart, last 60 minutes
+- **Response times**: P50/P95/P99/AVG percentiles
+- **Scan statistics**: Count, avg duration, markets per scan
+- **Endpoint breakdown**: Per-endpoint request counts, error rates, share bars
+- **Error breakdown**: Error count by code with share bars
+- **Auto-refresh**: Fetches `/api/analytics` every 5 seconds
+- **Theme**: Dark/light toggle, persisted in localStorage
+
+### 404 Page (`404.html`)
+
+Styled error page with FADE branding, social links, and back-to-dashboard button.
 
 ## Key Contracts
 
@@ -185,3 +270,5 @@ The scanner uses raw hex parsing (`word()`, `wordAddr()`, `decodeString()`) inst
 - **Build**: TypeScript compiled by `tsc`, Vercel handles the rest
 - **Routing**: `/api/*` → serverless functions, `/*` → `public/` static files
 - **Runtime**: Node.js >= 20
+- **CI/CD**: GitHub Actions (typecheck + tests on Node 20/22)
+- **API Spec**: OpenAPI 3.0 at `/openapi.json`

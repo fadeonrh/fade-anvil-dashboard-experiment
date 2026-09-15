@@ -24,31 +24,37 @@ npm run dev
 
 Opens the Vercel dev server at `http://localhost:3000`. The server proxies API requests to the serverless functions and serves `public/` as static files.
 
-### Without Vercel CLI
+### Standalone Server
 
 ```bash
-npx tsx test-server.ts
+npm start
+# or
+npx tsx bin/fade-anvil.js
 ```
 
-Standalone server on port `3004`. Useful if you don't want the Vercel CLI overhead.
+Standalone server on port `3004`. Serves frontend, API, static files, and analytics. No Vercel CLI required.
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Vercel dev server (port 3000) |
+| `npm start` | Standalone server (port 3004) |
 | `npm run build` | Compile TypeScript to `dist/` |
 | `npm run typecheck` | Type-check without emitting |
-| `npx tsx test-server.ts` | Standalone server (port 3004) |
+| `npm test` | Run all tests (41 tests) |
+| `npm run test:unit` | Unit tests only (31 tests) |
+| `npm run test:integration` | Integration tests only (10 tests) |
 
-Always run `npm run typecheck` before committing to catch type errors.
+Always run `npm run typecheck` and `npm test` before committing.
 
 ## Project Layout
 
 ```
 api/                    # Vercel serverless handlers
-  markets.ts            # GET /api/markets
-  health.ts             # GET /api/health
+  markets.ts            # GET /api/markets — full scan + spread
+  health.ts             # GET /api/health — liveness + analytics
+  analytics.ts          # GET /api/analytics — full snapshot
 
 src/lib/                # Core library (TypeScript)
   config.ts             # RPC client + rate limiting
@@ -57,11 +63,26 @@ src/lib/                # Core library (TypeScript)
   anvil-spread.ts       # Pure spread math
   anvil-combine.ts      # AnvilScanner orchestrator
   v3-pool.ts            # Uniswap V3 pool math
+  analytics.ts          # In-memory analytics engine
+
+bin/
+  fade-anvil.js         # Standalone launcher (npx / npm start)
 
 public/
-  index.html            # Single-page frontend (Alpine.js)
+  index.html            # Dashboard SPA (Alpine.js)
+  analytics.html        # Analytics dashboard
+  404.html              # Styled error page
+  openapi.json          # OpenAPI 3.0 spec
 
-test-server.ts          # Standalone HTTP server
+tests/
+  unit/
+    anvil-spread.test.ts  # 22 spread math tests
+    v3-pool.test.ts       # 9 V3 pool tests
+  integration/
+    api.test.ts           # 10 API integration tests
+
+.github/workflows/ci.yml  # GitHub Actions CI
+test-server.ts             # Legacy standalone server
 ```
 
 ## Code Conventions
@@ -86,6 +107,29 @@ test-server.ts          # Standalone HTTP server
 - `anvil-spread.ts` — pure computation, zero I/O
 - `anvil-combine.ts` — orchestration, caching, pipeline
 - `v3-pool.ts` — isolated V3 math
+- `analytics.ts` — in-memory analytics tracking
+
+## Testing
+
+### Run Tests
+
+```bash
+npm test              # all 41 tests
+npm run test:unit     # 31 unit tests (spread math + V3 pool)
+npm run test:integration  # 10 integration tests (API endpoints)
+```
+
+### Test Structure
+
+- **Unit tests** (`tests/unit/`): Pure functions, no I/O. Test spread computation and V3 pool math.
+- **Integration tests** (`tests/integration/`): HTTP requests against a running server. Test health, markets, 404, CORS, error format.
+
+### Writing Tests
+
+- Use Node.js built-in test runner (`node:test` + `node:assert/strict`)
+- Run with `npx tsx --test` (TypeScript support)
+- Unit tests: mock data, test edge cases
+- Integration tests: hit live server on port 3004
 
 ## Adding a New Data Source
 
@@ -100,25 +144,37 @@ test-server.ts          # Standalone HTTP server
 ### API Only
 
 ```bash
-curl http://localhost:3000/api/markets | jq '.[0]'
+curl http://localhost:3004/api/markets | jq '.[0]'
 ```
 
 ### With Custom OpenSea Key
 
 ```bash
-curl "http://localhost:3000/api/markets?openseaKey=YOUR_KEY" | jq '.[0]'
+curl "http://localhost:3004/api/markets?openseaKey=YOUR_KEY" | jq '.[0]'
 ```
 
 ### Force Refresh
 
 ```bash
-curl "http://localhost:3000/api/markets?force=true" | jq '.[0]'
+curl "http://localhost:3004/api/markets?force=true" | jq '.[0]'
 ```
 
 ### Health Check
 
 ```bash
-curl http://localhost:3000/api/health
+curl http://localhost:3004/api/health
+```
+
+### Analytics
+
+```bash
+curl http://localhost:3004/api/analytics | jq '.requests.total'
+```
+
+### OpenAPI Spec
+
+```bash
+curl http://localhost:3004/openapi.json | jq '.info'
 ```
 
 ## Environment Variables
@@ -186,6 +242,13 @@ Edit `ANVIL_EXCLUDED_MARKET_IDS` in `src/lib/anvil.ts`:
 ```typescript
 export const ANVIL_EXCLUDED_MARKET_IDS = new Set<number>([1, 2, 3, NEW_ID]);
 ```
+
+### Add a New Analytics Metric
+
+1. Add the counter/tracker in `src/lib/analytics.ts`
+2. Add tracking calls in the relevant endpoint (`api/markets.ts`, `api/health.ts`, or `bin/fade-anvil.js`)
+3. Add the field to `AnalyticsSnapshot` interface
+4. Add display in `public/analytics.html`
 
 ## License
 
