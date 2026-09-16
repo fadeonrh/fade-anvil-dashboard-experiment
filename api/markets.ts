@@ -39,11 +39,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const force = req.query.force === "true";
     const userKey = typeof req.query.openseaKey === "string" ? req.query.openseaKey : "";
-    const anvilScanner = getScanner();
 
-    if (userKey) {
-      anvilScanner.updateApiKey(userKey);
-    }
+    // When user provides a key, create a fresh scanner so the scan
+    // uses the key from the start (singleton cache won't have OS data).
+    const anvilScanner = userKey
+      ? new AnvilScanner(createThrottledClient(), {
+          cacheTtlMs: 300_000,
+          openseaApiKey: userKey,
+        })
+      : getScanner();
 
     const spreads = await anvilScanner.spreads(force);
     const duration = Date.now() - start;
