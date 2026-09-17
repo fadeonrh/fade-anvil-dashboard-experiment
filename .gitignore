@@ -3,6 +3,7 @@ dist/
 .env
 .vercel/
 .gstack/
+.gstack-design-audit/
 
 # Test artifacts
 *.png
@@ -22,3 +23,7 @@ design-baseline.json
 # Temp files
 *.tmp
 *.log
+*.tsbuildinfo
+
+# Debug scripts
+test-scan-debug.ts

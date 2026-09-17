@@ -26,8 +26,8 @@ export function defaultThrottleOptions(env: NodeJS.ProcessEnv = process.env): Th
     return Number.isFinite(n) && n > 0 ? n : fallback;
   };
   return {
-    rps: parseNum(env.RPC_RPS, 2),
-    burst: parseNum(env.RPC_BURST, 3),
+    rps: parseNum(env.RPC_RPS, 10),
+    burst: parseNum(env.RPC_BURST, 12),
     coalesce: true,
   };
 }

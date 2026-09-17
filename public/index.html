@@ -39,6 +39,8 @@
       --logo: #ffffff;
       --mono: 'Share Tech Mono', 'SF Mono', 'Fira Code', monospace;
       --display: 'Orbitron', sans-serif;
+      --night: #9b59b6;
+      --night-bg: rgba(155, 89, 182, 0.08);
     }
 
     :root[data-theme="light"] {
@@ -63,9 +65,23 @@
       --bg-negative: rgba(213, 0, 50, 0.1);
       --scanline: rgba(0, 0, 0, 0.02);
       --logo: #101214;
+      --night: #8e44ad;
+      --night-bg: rgba(142, 68, 173, 0.06);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    summary::-webkit-details-marker { display: none; }
+    summary::marker { display: none; content: ''; }
+    details > summary { cursor: pointer; }
+    details > summary .caret {
+      display: inline-block;
+      transition: transform 0.2s ease;
+      font-size: 0.6em;
+      margin-right: 6px;
+    }
+    details[open] > summary .caret {
+      transform: rotate(90deg);
+    }
     :focus-visible {
       outline: 2px solid var(--neon);
       outline-offset: 2px;
@@ -355,6 +371,7 @@
     }
     td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
     tr:hover td { background: var(--bg-positive); }
+    tbody tr:nth-child(even) td { background: var(--bg-soft); }
 
     /* ── LENS FLARE DIVIDER ── */
     .flare-divider {
@@ -466,7 +483,7 @@
       </div>
       <div class="card" style="text-align:center;">
         <div class="stat-title" style="font-size:0.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;">BEST SPREAD</div>
-        <div class="big-number" :class="bestSpread > 0 ? 'positive' : 'negative'" x-text="bestSpread !== null ? '+' + bestSpread.toFixed(4) + ' ETH' : '—'"></div>
+        <div class="big-number" :class="bestSpread > 0 ? 'positive' : 'negative'" x-text="bestSpread !== null ? (bestSpread >= 0 ? '+' : '') + bestSpread.toFixed(4) + ' ETH' : '—'"></div>
       </div>
     </div>
 
@@ -485,6 +502,58 @@
         Free key: <a href="https://docs.opensea.io/reference/request-an-api-key" target="_blank" style="color:var(--neon);">docs.opensea.io</a> — stored in your browser only, never sent to our servers.
       </div>
     </div>
+
+    <!-- THE NIGHT — Nightshades Event Status -->
+    <details class="card" open style="border-color:rgba(128,0,255,0.25);background:linear-gradient(135deg,rgba(128,0,255,0.03),transparent 60%);">
+      <summary><span class="caret">▶</span><h2 style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;border:none;padding:0;">
+        <span>THE NIGHT <span style="font-size:0.55em;color:var(--text-dim);letter-spacing:1px;">NIGHTSHADES</span></span>
+        <span class="badge" :style="'background:' + (night?.state === 'night_locked' ? '#8000ff;color:#fff' : night?.state === 'decay' ? '#ff6600;color:#fff' : '#666;color:#fff')"
+              x-text="night?.label ?? 'Loading…'"></span>
+      </h2></summary>
+
+      <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:12px;">
+        <!-- Phase & Countdown -->
+        <div class="card" style="background:var(--bg);margin:0;padding:12px;">
+          <div style="font-size:0.6rem;letter-spacing:2px;color:var(--text-dim);margin-bottom:8px;">PHASE</div>
+          <div style="font-size:1.1rem;font-weight:700;" x-text="night?.label ?? '—'"></div>
+          <div style="font-size:0.7rem;color:var(--text-dim);margin-top:4px;" x-show="night?.state === 'normal' && night?.msUntilNight > 0">
+            Next Night in <span x-text="night?.msUntilNight ? formatNightCountdown(night.msUntilNight) : '—'"></span>
+          </div>
+          <div style="font-size:0.7rem;color:var(--yellow);margin-top:4px;" x-show="night?.state === 'night_locked'">
+            All faction trading PAUSED
+          </div>
+          <div style="font-size:0.7rem;color:var(--orange);margin-top:4px;" x-show="night?.state === 'decay'">
+            Anti-snipe tax decaying
+          </div>
+          <div style="font-size:0.7rem;color:var(--green);margin-top:4px;" x-show="night?.state === 'recovery'">
+            Trading resumes
+          </div>
+        </div>
+
+        <!-- Total Pot -->
+        <div class="card" style="background:var(--bg);margin:0;padding:12px;">
+          <div style="font-size:0.6rem;letter-spacing:2px;color:var(--text-dim);margin-bottom:8px;">TOTAL POT</div>
+          <div style="font-size:1.1rem;font-weight:700;" x-text="night?.potEth != null ? night.potEth.toFixed(4) + ' ETH' : '—'"></div>
+        </div>
+
+        <!-- Timing -->
+        <div class="card" style="background:var(--bg);margin:0;padding:12px;">
+          <div style="font-size:0.6rem;letter-spacing:2px;color:var(--text-dim);margin-bottom:8px;">SCHEDULE (EDT)</div>
+          <div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.7rem;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#8000ff;flex-shrink:0;"></span>
+            <span>Night 10–11 AM</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.7rem;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ff6600;flex-shrink:0;"></span>
+            <span>Sunrise 11–12 PM</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.7rem;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--neon);flex-shrink:0;"></span>
+            <span>Day till next Night</span>
+          </div>
+        </div>
+      </div>
+    </details>
 
     <!-- Anvil Markets -->
     <details class="card anvil-wide" open>
@@ -506,22 +575,29 @@
               <th>Net spread (bid)</th>
               <th>Inv</th>
               <th>Pool TVL</th>
+              <th>Royalty</th>
               <th style="position:relative;" title="Liquidity in the last 24h — 0 sales = dead market, excluded from trading">24h vol (sales)<span style="font-size:0.6em;cursor:help;margin-left:2px;color:var(--text-dim);">?</span></th>
-              <th>Status</th>
             </tr>
           </thead>
           <tbody>
             <template x-for="m in anvil" :key="m.collection">
-              <tr :style="anvilIsHidden(m.collection) ? 'opacity:0.35;' : (m.spread?.liquidityClass === 'dead' ? 'opacity:0.6;' : '')">
+              <tr :style="(() => {
+                if (anvilIsHidden(m.collection)) return 'opacity:0.35;';
+                let s = '';
+                if (isNightshades(m)) s += 'background:var(--night-bg);border-left:3px solid var(--night);';
+                if (m.spread?.liquidityClass === 'dead') s += 'opacity:0.6;';
+                return s;
+              })()">
                 <td>
-                  <div style="display:flex;align-items:center;gap:6px;">
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                     <button style="background:none;border:none;cursor:pointer;font-size:0.7rem;color:var(--text-dim);padding:2px;" @click="anvilToggleHide(m.collection)" x-text="anvilIsHidden(m.collection) ? ' Show' : ' Hide'" :title="anvilIsHidden(m.collection) ? 'Show this market' : 'Hide this market'"></button>
-                    <span x-text="m.collectionName || ('Market #' + m.marketId)"></span>
-                    <span x-show="m.specialProject" class="badge" style="font-size:0.5rem;background:#96E600;color:#000;" title="StonkBrokers Special Projects Partner">SP</span>
-                    <span x-show="m.verified" class="badge" style="font-size:0.5rem;background:#2196F3;color:#fff;" :title="m.verifiedNote || 'Verified by Clutch team'">&#10003;</span>
-                    <span x-show="m.liquidityLocked" class="badge" style="font-size:0.5rem;background:#FF9800;color:#000;" :title="m.liquidityLockedNote || 'Liquidity locked'">&#128274;</span>
-                    <span x-show="m.liquiditySoftLocked && !m.liquidityLocked" class="badge" style="font-size:0.5rem;background:#795548;color:#fff;" title="Liquidity time-locked (soft)">&#128274;</span>
-                    <span x-show="m.deprecated" class="badge" style="font-size:0.5rem;background:var(--red);color:#fff;">DEPRECATED</span>
+                    <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;" x-text="m.collectionName || ('Market #' + m.marketId)"></span>
+                    <span x-show="isNightshades(m)" class="badge" style="font-size:0.5rem;background:var(--night);color:#fff;white-space:nowrap;" title="Nightshades faction" x-text="(night?.state === 'night_locked' ? '🌙 ' : night?.state === 'decay' ? '🌅 ' : '☀️ ') + (night?.label || 'Day')"></span>
+                    <span x-show="m.specialProject" class="badge" style="font-size:0.5rem;background:#96E600;color:#000;white-space:nowrap;" title="StonkBrokers Special Projects Partner">SP</span>
+                    <span x-show="m.verified" class="badge" style="font-size:0.5rem;background:#2196F3;color:#fff;white-space:nowrap;" :title="m.verifiedNote || 'Verified by Clutch team'">&#10003;</span>
+                    <span x-show="m.liquidityLocked" class="badge" style="font-size:0.5rem;background:#FF9800;color:#000;white-space:nowrap;" :title="m.liquidityLockedNote || 'Liquidity locked'">&#128274;</span>
+                    <span x-show="m.liquiditySoftLocked && !m.liquidityLocked" class="badge" style="font-size:0.5rem;background:#795548;color:#fff;white-space:nowrap;" title="Liquidity time-locked (soft)">&#128274;</span>
+                    <span x-show="m.deprecated" class="badge" style="font-size:0.5rem;background:var(--red);color:#fff;white-space:nowrap;">DEPRECATED</span>
                   </div>
                   <div style="font-size:0.55rem;color:var(--text-dim);">
                     <span x-text="(m.collectionSymbol || '') + ' · fees ' + (m.randomFeeBps/100) + '%/' + (m.specificFeeBps/100) + '% · token ' + (m.tokenSymbol || '?')"></span>
@@ -553,6 +629,9 @@
                 </td>
                 <td x-text="m.inventorySize"></td>
                 <td x-text="m.poolTvlUsd !== null ? '$' + Math.round(Number(m.poolTvlUsd)/1000) + 'k' : '—'"></td>
+                <td style="font-size:0.65rem;">
+                  <span x-text="m.royaltyBps > 0 ? (m.royaltyBps / 100).toFixed(1) + '%' : '—'"></span>
+                </td>
                 <td style="font-size:0.65rem;" :title="m.spread?.liquidityClass === 'dead' ? '0 sales/24h — excluded from trading' : (m.sales24h === null ? 'Liquidity data unavailable' : null)">
                   <template x-if="m.spread?.liquidityClass === 'dead'">
                     <span style="color:var(--red);">0 (0)</span>
@@ -566,11 +645,6 @@
                   <template x-if="m.spread?.liquidityClass === null">
                     <span style="color:var(--text-dim);" title="Liquidity data unavailable">?</span>
                   </template>
-                </td>
-                <td>
-                  <span class="badge" x-show="m.spread?.liquidityClass === 'dead'" style="font-size:0.55rem;">DEAD</span>
-                  <div :class="m.spread?.tradable ? 'positive' : ''" style="font-size:0.65rem;" x-text="m.spread?.tradable ? 'TRADABLE' : (m.spread?.reason || '—')"></div>
-                  <div x-show="m.spread?.warnings?.length" style="font-size:0.55rem;color:var(--text-dim);" x-text="'⚠ ' + (m.spread.warnings || []).join(' · ')"></div>
                 </td>
               </tr>
             </template>
@@ -601,6 +675,8 @@
         theme: localStorage.getItem('fade-theme') === 'light' ? 'light' : 'dark',
         openseaKey: localStorage.getItem('fade-opensea-key') || '',
         openseaKeyDirty: false,
+        night: null,
+        nightConfig: null,
 
         get bestSpread() {
           const spreads = this.anvil
@@ -617,8 +693,38 @@
 
         async init() {
           document.documentElement.setAttribute('data-theme', this.theme);
-          await this.refreshAnvil();
+          await Promise.all([this.refreshAnvil(), this.refreshNight()]);
           setInterval(() => this.refreshAnvil(), 60000);
+          setInterval(() => this.refreshNight(), 60000);
+        },
+
+        async refreshNight() {
+          try {
+            const res = await fetch('/api/night');
+            if (!res.ok) return;
+            const data = await res.json();
+            this.night = data;
+            this.nightConfig = data.config;
+          } catch { /* silent */ }
+        },
+
+        formatNightMinutes(mins) {
+          const h = Math.floor(mins / 60);
+          const m = mins % 60;
+          const ampm = h >= 12 ? 'PM' : 'AM';
+          const h12 = h > 12 ? h - 12 : (h === 0 ? 12 : h);
+          return h12 + ':' + String(m).padStart(2, '0') + ' ' + ampm;
+        },
+
+        formatNightCountdown(ms) {
+          if (!ms || ms <= 0) return '';
+          const totalSec = Math.floor(ms / 1000);
+          const h = Math.floor(totalSec / 3600);
+          const m = Math.floor((totalSec % 3600) / 60);
+          const s = totalSec % 60;
+          if (h > 0) return h + 'h ' + m + 'm';
+          if (m > 0) return m + 'm ' + s + 's';
+          return s + 's';
         },
 
         async refreshAnvil(force = false) {
@@ -698,6 +804,11 @@
 
         anvilIsHidden(collection) {
           return this.anvilHidden.includes(collection);
+        },
+
+        isNightshades(m) {
+          const sym = (m.collectionSymbol || '').toUpperCase();
+          return sym === 'GHOSTNFT' || sym === 'KNIGHTNFT' || sym === 'WATCHNFT' || sym === 'ZOMBIENFT';
         },
 
         formatNum(n) {

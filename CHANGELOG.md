@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-09-17
+
+### Added
+- **Nightshades integration** — live Night phase display (Night/Sunrise/Day), countdown to next Night, total pot value from on-chain vault
+- **ERC-2981 royalty reader** — reads on-chain collection royalties per market, displayed as % in table
+- **`api/night.ts`** — `GET /api/night` endpoint returning Night state, config, and pot value
+- **`src/lib/night-detector.ts`** — pure time-based Night state machine (4 states: normal, night_locked, decay, recovery)
+- **`src/lib/night-settings.ts`** — display-only Nightshades parameters (timing, anti-snipe thresholds, pot/liquidity)
+- **`src/lib/erc2981-royalty.ts`** — on-chain ERC-2981 royalty reader with 1-hour cache
+- Nightshades overlay on market rows — purple left border + background tint for faction collections (GHOSTNFT, KNIGHTNFT, WATCHNFT, ZOMBIENFT)
+- Phase badge (🌙/🌅/☀️) on Nightshades market rows
+- Zebra striping on table rows for readability
+
+### Changed
+- **Multicall batching** — all per-market RPC reads (name, symbol, quote, fee) batched into single multicall instead of individual calls
+- **RPC rate limit** — increased from 2 RPS / 3 burst to 10 RPS / 12 burst
+- **OpenSea slug cache** — cached 1 hour per collection (eliminates redundant lookups)
+- **OpenSea floor + offer cache** — cached 5 minutes across sweeps
+- **OpenSea rate limit** — tightened from 120ms to 100ms (10 req/s)
+- **Parallel reads** — DexScreener, royalty, slug resolution, floor, offer all run concurrently
+- **Pre-resolved slugs** — all slugs resolved before building spreads (no per-market blocking)
+- Collection name truncates with ellipsis on narrow screens
+- Badges wrap to next line instead of truncating
+
+### Fixed
+- **"+-0.0013 ETH"** — proper sign handling in BEST SPREAD card (only "+" for positive values)
+- **Night phase detection** — Sunrise now correctly bounded to 11AM-12PM (was incorrectly spanning 11AM-1PM)
+- **Double arrow on collapsible sections** — native marker hidden, custom ▶ rotates on open/close
+- **Cursor pointer** on collapsible section headers
+
+### Removed
+- Status column from Anvil Markets table
+- Nightshades config section (kept card only)
+
 ## [1.3.0] - 2026-09-15
 
 ### Added

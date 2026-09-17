@@ -16,7 +16,7 @@
  *   w12 0
  */
 import type { PublicClient } from "viem";
-import { getFunctionSelector } from "viem";
+import { getFunctionSelector, parseAbi } from "viem";
 
 export const ANVIL_FACTORY = "0x8b186717a20845b514344b17fd5e198aDCab9069" as const;
 export const ANVIL_BATCH_ROUTER = "0x02eA25c9B75D98E4D5c90BEe999493095C2Da3F1" as const;
@@ -137,6 +137,14 @@ const OPENSEA_V2 = "https://api.opensea.io/v2";
 const CLUTCH_API = "https://anvil.clutch.market/api/markets/list";
 const UA = "FadeAnvilDashboard/1.0";
 const CLUTCH_CHAIN_ID = 4663;
+
+/** ABI for multicall-batched reads. */
+const BATCH_ABI = parseAbi([
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function quoteRandomBuy() view returns (uint256 totalCost, uint256 baseCost, uint256 fee, uint256 protocolFee, uint256 inventorySize, uint256 nextTokenId)",
+  "function loanCreationFeeWei() view returns (uint256)",
+]);
 
 // ---------------------------------------------------------------- on-chain
 
@@ -329,16 +337,14 @@ export function clearClutchCache(): void {
 /**
  * Read V2 factory markets and return a map of collection → marketId.
  * Used to identify excluded V2 markets when scanning via clutch.
+ * Uses readAllMarkets (single RPC call) instead of per-market reads.
  */
 export async function readV2MarketIdMap(client: PublicClient): Promise<Map<string, number>> {
   const map = new Map<string, number>();
   try {
-    const count = Number(word((await client.call({ to: ANVIL_FACTORY, data: SEL.marketCount })).data, 0));
-    const results = await Promise.all(
-      Array.from({ length: count }, (_, i) => readMarketInfo(client, i + 1)),
-    );
-    for (const info of results) {
-      if (info) map.set(info.collection.toLowerCase(), info.marketId);
+    const all = await readAllMarkets(client);
+    for (const info of all) {
+      map.set(info.collection.toLowerCase(), info.marketId);
     }
   } catch { /* V2 factory unavailable — return empty map */ }
   return map;
@@ -421,40 +427,128 @@ async function scanFromClutch(
   // Fetch clutch metadata badges.
   const clutchMeta = await readClutchMarketMeta();
 
-  const states = await Promise.all(included.map(async (m) => {
-    const info = clutchToInfo(m);
-    const { collection, token, amm, loan } = info;
-    const cKey = collection.toLowerCase();
-    const tKey = token.toLowerCase();
-    const cCached = immutableMetaCache.get(cKey);
-    const tCached = immutableMetaCache.get(tKey);
-    const [collectionName, collectionSymbol, tokenSymbol, quote, loanFee] = await Promise.all([
-      cCached?.name !== undefined ? Promise.resolve(cCached.name) :
-        client.call({ to: collection, data: SEL.name }).then((r) => { const n = decodeString(r.data); immutableMetaCache.set(cKey, { ...immutableMetaCache.get(cKey) ?? { name: "", symbol: "" }, name: n }); return n; }).catch(() => ""),
-      cCached?.symbol !== undefined ? Promise.resolve(cCached.symbol) :
-        client.call({ to: collection, data: SEL.symbol }).then((r) => { const s = decodeString(r.data); immutableMetaCache.set(cKey, { ...immutableMetaCache.get(cKey) ?? { name: "", symbol: "" }, symbol: s }); return s; }).catch(() => ""),
-      tCached?.symbol !== undefined ? Promise.resolve(tCached.symbol) :
-        client.call({ to: token, data: SEL.symbol }).then((r) => { const s = decodeString(r.data); immutableMetaCache.set(tKey, { ...immutableMetaCache.get(tKey) ?? { name: "", symbol: "" }, symbol: s }); return s; }).catch(() => ""),
-      readAmmQuote(client, amm),
-      loan !== "0x0000000000000000000000000000000000000000"
-        ? client
-            .call({ to: loan, data: SEL.loanCreationFeeWei })
-            .then((r) => word(r.data, 0))
-            .catch(() => null)
-        : Promise.resolve(null),
-    ]);
+  // Build all multicall entries: 3-5 calls per market (name, symbol, token symbol, quote, fee).
+  const calls: Array<{ address: `0x${string}`; abi: typeof BATCH_ABI; functionName: string }> = [];
+  const callIndex: Array<{ marketIdx: number; field: string }> = [];
+  const includedInfos = included.map((m) => clutchToInfo(m));
+
+  for (let i = 0; i < includedInfos.length; i++) {
+    const info = includedInfos[i];
+    const cKey = info.collection.toLowerCase();
+    const tKey = info.token.toLowerCase();
+    // Collection name (skip if cached)
+    if (!immutableMetaCache.has(cKey) || !immutableMetaCache.get(cKey)!.name) {
+      calls.push({ address: info.collection, abi: BATCH_ABI, functionName: "name" });
+      callIndex.push({ marketIdx: i, field: "collectionName" });
+    }
+    // Collection symbol (skip if cached)
+    if (!immutableMetaCache.has(cKey) || !immutableMetaCache.get(cKey)!.symbol) {
+      calls.push({ address: info.collection, abi: BATCH_ABI, functionName: "symbol" });
+      callIndex.push({ marketIdx: i, field: "collectionSymbol" });
+    }
+    // Token symbol (skip if cached)
+    if (!immutableMetaCache.has(tKey) || !immutableMetaCache.get(tKey)!.symbol) {
+      calls.push({ address: info.token, abi: BATCH_ABI, functionName: "symbol" });
+      callIndex.push({ marketIdx: i, field: "tokenSymbol" });
+    }
+    // AMM quoteRandomBuy
+    calls.push({ address: info.amm, abi: BATCH_ABI, functionName: "quoteRandomBuy" });
+    callIndex.push({ marketIdx: i, field: "quote" });
+    // Loan creation fee (if loan exists)
+    if (info.loan !== "0x0000000000000000000000000000000000000000") {
+      calls.push({ address: info.loan, abi: BATCH_ABI, functionName: "loanCreationFeeWei" });
+      callIndex.push({ marketIdx: i, field: "loanFee" });
+    }
+  }
+
+  // Execute all reads as a single multicall batch.
+  let multicallResults: readonly unknown[] = [];
+  if (calls.length > 0) {
+    try {
+      multicallResults = await client.multicall({ contracts: calls });
+    } catch {
+      // Multicall failed — fall back to empty results (markets will have null quotes)
+      multicallResults = calls.map(() => ({ status: "failure", error: new Error("multicall failed") }));
+    }
+  }
+
+  // Map multicall results back to market state fields.
+  const marketResults: Array<{
+    collectionName: string;
+    collectionSymbol: string;
+    tokenSymbol: string;
+    quote: AnvilAmmQuote | null;
+    loanCreationFeeWei: bigint | null;
+  }> = includedInfos.map(() => ({
+    collectionName: "",
+    collectionSymbol: "",
+    tokenSymbol: "",
+    quote: null,
+    loanCreationFeeWei: null,
+  }));
+
+  for (let ci = 0; ci < callIndex.length; ci++) {
+    const { marketIdx, field } = callIndex[ci];
+    const result = multicallResults[ci] as { status: string; result?: unknown; error?: Error };
+    if (result?.status !== "success" || result.result === undefined) continue;
+    const val = result.result;
+
+    switch (field) {
+      case "collectionName": {
+        const n = typeof val === "string" ? val : decodeString(val as `0x${string}`);
+        const cKey = includedInfos[marketIdx].collection.toLowerCase();
+        immutableMetaCache.set(cKey, { ...immutableMetaCache.get(cKey) ?? { name: "", symbol: "" }, name: n });
+        marketResults[marketIdx].collectionName = n;
+        break;
+      }
+      case "collectionSymbol": {
+        const s = typeof val === "string" ? val : decodeString(val as `0x${string}`);
+        const cKey = includedInfos[marketIdx].collection.toLowerCase();
+        immutableMetaCache.set(cKey, { ...immutableMetaCache.get(cKey) ?? { name: "", symbol: "" }, symbol: s });
+        marketResults[marketIdx].collectionSymbol = s;
+        break;
+      }
+      case "tokenSymbol": {
+        const s = typeof val === "string" ? val : decodeString(val as `0x${string}`);
+        const tKey = includedInfos[marketIdx].token.toLowerCase();
+        immutableMetaCache.set(tKey, { ...immutableMetaCache.get(tKey) ?? { name: "", symbol: "" }, symbol: s });
+        marketResults[marketIdx].tokenSymbol = s;
+        break;
+      }
+      case "quote": {
+        const r = val as readonly bigint[];
+        marketResults[marketIdx].quote = {
+          totalCost: r[0],
+          baseCost: r[1],
+          fee: r[2],
+          protocolFee: r[3],
+          inventorySize: Number(r[4]),
+          nextTokenId: r[5],
+        };
+        break;
+      }
+      case "loanFee":
+        marketResults[marketIdx].loanCreationFeeWei = val as bigint;
+        break;
+    }
+  }
+
+  // Assemble final state objects.
+  return includedInfos.map((info, i) => {
+    const cKey = info.collection.toLowerCase();
+    const clutchName = included[i].collectionName;
+    const mr = marketResults[i];
     return {
       info,
-      collectionName: m.collectionName ?? collectionName,
-      collectionSymbol,
-      tokenSymbol: m.tokenSymbol ?? tokenSymbol,
-      quote,
-      loanCreationFeeWei: loanFee,
+      collectionName: clutchName || mr.collectionName || immutableMetaCache.get(cKey)?.name || "",
+      collectionSymbol: mr.collectionSymbol || immutableMetaCache.get(cKey)?.symbol || "",
+      tokenSymbol: included[i].tokenSymbol || mr.tokenSymbol || immutableMetaCache.get(info.token.toLowerCase())?.symbol || "",
+      quote: mr.quote,
+      loanCreationFeeWei: mr.loanCreationFeeWei,
       observedAtMs: Date.now(),
       clutch: clutchMeta.get(cKey) ?? null,
     };
-  }));
-  return states;
+  });
 }
 
 /** Fallback: scan from on-chain V2 factory (markets 1..count, minus excluded). */
@@ -559,7 +653,7 @@ export async function readTokenDex(token: `0x${string}`, timeoutMs = 8000): Prom
  * Simple sequential queue: waits until enough time has passed since the last call.
  */
 let osLastCallAt = 0;
-const OS_MIN_INTERVAL_MS = 120; // ~8 req/sec (safe margin under 10/sec limit)
+const OS_MIN_INTERVAL_MS = 100; // 10 req/sec (matches free tier limit)
 
 async function osAcquire(): Promise<void> {
   const now = Date.now();
@@ -570,6 +664,18 @@ async function osAcquire(): Promise<void> {
   osLastCallAt = Date.now();
 }
 
+/** Slug cache: collection address → slug. TTL 1 hour (slugs don't change). */
+const slugCache = new Map<string, { slug: string; at: number }>();
+const SLUG_CACHE_TTL_MS = 60 * 60_000;
+
+/** Floor cache: slug → { floorEth, floorListings, totalListings, at }. TTL 5 min. */
+const floorCache = new Map<string, { floorEth: number | null; floorListings: number | null; totalListings: number | null; at: number }>();
+const FLOOR_CACHE_TTL_MS = 5 * 60_000;
+
+/** Offer cache: slug → { offerEth, at }. TTL 5 min. */
+const offerCache = new Map<string, { offerEth: number | null; at: number }>();
+const OFFER_CACHE_TTL_MS = 5 * 60_000;
+
 /** Resolve the OpenSea slug for an NFT contract on the robinhood chain. */
 export async function resolveOpenSeaSlug(
   collection: `0x${string}`,
@@ -577,6 +683,9 @@ export async function resolveOpenSeaSlug(
   timeoutMs = 8000,
 ): Promise<string | null> {
   if (!apiKey) return null;
+  const key = collection.toLowerCase();
+  const cached = slugCache.get(key);
+  if (cached && Date.now() - cached.at < SLUG_CACHE_TTL_MS) return cached.slug;
   await osAcquire();
   try {
     const res = await fetch(`${OPENSEA_V2}/chain/robinhood/contract/${collection}`, {
@@ -585,7 +694,9 @@ export async function resolveOpenSeaSlug(
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { collection?: string };
-    return data.collection ?? null;
+    const slug = data.collection ?? null;
+    if (slug) slugCache.set(key, { slug, at: Date.now() });
+    return slug;
   } catch {
     return null;
   }
@@ -603,6 +714,11 @@ export async function readOpenSeaFloor(
 ): Promise<AnvilOpenSeaFloor> {
   const empty: AnvilOpenSeaFloor = { slug, floorEth: null, floorListings: null, totalListings: null, floorOfferEth: null, volume24hEth: null, sales24h: null };
   if (!apiKey) return empty;
+  // Check floor cache
+  const cached = floorCache.get(slug);
+  if (cached && Date.now() - cached.at < FLOOR_CACHE_TTL_MS) {
+    return { ...empty, floorEth: cached.floorEth, floorListings: cached.floorListings, totalListings: cached.totalListings };
+  }
   await osAcquire();
   try {
     const res = await fetch(`${OPENSEA_V2}/listings/collection/${slug}/all?limit=${limit}`, {
@@ -614,7 +730,10 @@ export async function readOpenSeaFloor(
       listings?: Array<{ price?: { current?: { value?: string; decimals?: number } } }>;
     };
     const listings = data.listings ?? [];
-    if (listings.length === 0) return empty;
+    if (listings.length === 0) {
+      floorCache.set(slug, { floorEth: null, floorListings: null, totalListings: null, at: Date.now() });
+      return empty;
+    }
     const prices: number[] = [];
     for (const l of listings) {
       const cur = l.price?.current;
@@ -622,10 +741,14 @@ export async function readOpenSeaFloor(
       const eth = Number(cur.value) / 10 ** Number(cur.decimals ?? 18);
       if (Number.isFinite(eth) && eth > 0) prices.push(eth);
     }
-    if (prices.length === 0) return empty;
+    if (prices.length === 0) {
+      floorCache.set(slug, { floorEth: null, floorListings: null, totalListings: null, at: Date.now() });
+      return empty;
+    }
     prices.sort((a, b) => a - b);
     const floor = prices[0]!;
     const atFloor = prices.filter((p) => Math.abs(p - floor) / floor <= 0.01).length;
+    floorCache.set(slug, { floorEth: floor, floorListings: atFloor, totalListings: listings.length, at: Date.now() });
     return { slug, floorEth: floor, floorListings: atFloor, totalListings: listings.length, floorOfferEth: null, volume24hEth: null, sales24h: null };
   } catch {
     return empty;
@@ -643,6 +766,11 @@ export async function readOpenSeaFloorOffer(
   timeoutMs = 8000,
 ): Promise<number | null> {
   if (!apiKey) return null;
+  // Check offer cache
+  const cached = offerCache.get(slug);
+  if (cached && Date.now() - cached.at < OFFER_CACHE_TTL_MS) {
+    return cached.offerEth;
+  }
   await osAcquire();
   try {
     const res = await fetch(`${OPENSEA_V2}/collections/${slug}/offer_aggregates`, {
@@ -657,11 +785,16 @@ export async function readOpenSeaFloorOffer(
       }>;
     };
     const aggs = data.offer_aggregates ?? [];
-    if (aggs.length === 0) return null;
+    if (aggs.length === 0) {
+      offerCache.set(slug, { offerEth: null, at: Date.now() });
+      return null;
+    }
     // Sort by price descending to get the highest bid
     const sorted = aggs.sort((a, b) => (b.offer_price?.token_unit ?? 0) - (a.offer_price?.token_unit ?? 0));
     const best = sorted[0]?.offer_price?.token_unit;
-    return best && Number.isFinite(best) && best > 0 ? best : null;
+    const offerEth = best && Number.isFinite(best) && best > 0 ? best : null;
+    offerCache.set(slug, { offerEth, at: Date.now() });
+    return offerEth;
   } catch {
     return null;
   }

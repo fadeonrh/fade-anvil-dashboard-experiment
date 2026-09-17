@@ -3,6 +3,15 @@ import http from "node:http";
 import { createThrottledClient } from "../src/lib/config.js";
 import { AnvilScanner } from "../src/lib/anvil-combine.js";
 import { trackRequest, trackScan, getSnapshot } from "../src/lib/analytics.js";
+import {
+  getCurrentNightState,
+  getDecayProgress,
+  getCurrentTaxBps,
+  nightStateLabel,
+  getTimeUntilNextNight,
+} from "../src/lib/night-detector.js";
+import { DEFAULT_NIGHT_CONFIG } from "../src/lib/night-settings.js";
+import { parseAbi } from "viem";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +24,21 @@ const scanner = new AnvilScanner(client, {
   cacheTtlMs: 300_000,
   openseaApiKey: process.env.OPENSEA_API_KEY ?? "",
 });
+
+const VAULT_ADDRESS = "0xfff716727d7E80E29eab5D3498b7F28431e65C58";
+const WETH_ADDRESS = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73";
+const ERC20_BALANCE_ABI = parseAbi(["function balanceOf(address) view returns (uint256)"]);
+
+let potCache = { eth: null, at: 0 };
+async function getVaultPotEth() {
+  if (Date.now() - potCache.at < 60_000) return potCache.eth;
+  try {
+    const balance = await client.readContract({ address: WETH_ADDRESS, abi: ERC20_BALANCE_ABI, functionName: "balanceOf", args: [VAULT_ADDRESS] });
+    const eth = Number(balance) / 1e18;
+    potCache = { eth, at: Date.now() };
+    return eth;
+  } catch { return potCache.eth; }
+}
 
 function serialize(obj) {
   return JSON.parse(
@@ -56,6 +80,38 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify(snapshot));
   }
 
+  if (url.pathname === "/api/night") {
+    trackRequest("/api/night", Date.now() - start, false);
+    const now = new Date();
+    const timing = {
+      lockStartMinutes: DEFAULT_NIGHT_CONFIG.nightStartMinutes,
+      lockEndMinutes: DEFAULT_NIGHT_CONFIG.nightEndMinutes,
+      recoveryEndMinutes: DEFAULT_NIGHT_CONFIG.recoveryEndMinutes,
+    };
+    const state = getCurrentNightState(now, timing, DEFAULT_NIGHT_CONFIG.decayDurationSeconds);
+    const progress = getDecayProgress(now, timing, DEFAULT_NIGHT_CONFIG.decayDurationSeconds);
+    const taxBps = getCurrentTaxBps(
+      now, timing,
+      DEFAULT_NIGHT_CONFIG.decayDurationSeconds,
+      DEFAULT_NIGHT_CONFIG.maxTaxRate,
+      DEFAULT_NIGHT_CONFIG.decayCurve,
+    );
+    const msUntilNight = getTimeUntilNextNight(now, timing);
+    const potEth = await getVaultPotEth();
+    const data = serialize({
+      state,
+      label: nightStateLabel(state),
+      decayProgress: progress,
+      taxBps,
+      msUntilNight,
+      potEth,
+      config: DEFAULT_NIGHT_CONFIG,
+      now: now.toISOString(),
+    });
+    res.writeHead(200, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify(data));
+  }
+
   if (url.pathname === "/api/markets") {
     try {
       console.log("[scan] Starting Anvil market sweep...");
@@ -90,6 +146,7 @@ const server = http.createServer(async (req, res) => {
         osTotalListings: s.opensea.totalListings,
         volume24hEth: s.opensea.volume24hEth,
         sales24h: s.opensea.sales24h,
+        royaltyBps: s.royaltyBps,
         spread: s.spread,
         observedAtMs: s.state.observedAtMs,
         verified: s.state.clutch?.verified ?? false,

@@ -26,6 +26,32 @@ import {
   type AnvilSpreadConfig,
   DEFAULT_ANVIL_SPREAD_CONFIG,
 } from "./anvil-spread.js";
+import { readRoyaltyBps } from "./erc2981-royalty.js";
+
+/** Simple async mutex — allows max 1 concurrent holder, queues the rest. */
+class AsyncGate {
+  private queue: Array<() => void> = [];
+  private held = false;
+
+  async acquire(): Promise<void> {
+    if (!this.held) {
+      this.held = true;
+      return;
+    }
+    return new Promise<void>((resolve) => {
+      this.queue.push(resolve);
+    });
+  }
+
+  release(): void {
+    const next = this.queue.shift();
+    if (next) {
+      next();
+    } else {
+      this.held = false;
+    }
+  }
+}
 
 export interface AnvilMarketSpread {
   state: AnvilMarketState;
@@ -36,6 +62,8 @@ export interface AnvilMarketSpread {
   spread: AnvilSpreadResult;
   /** DEX swap cost in ETH (from V3 pool quote), null when unpriceable. */
   dexSwapCostEth?: number | null;
+  /** ERC-2981 royalty in bps (from on-chain read), 0 when not implemented. */
+  royaltyBps: number;
 }
 
 export interface AnvilScanOptions {
@@ -54,8 +82,8 @@ export class AnvilScanner {
   /** Per-market stats cache: slug → { data, fetchedAt, healthy }. */
   private statsCache = new Map<string, { volume24hEth: number | null; sales24h: number | null; fetchedAt: number; healthy: boolean }>();
   private readonly STATS_TTL_MS = 30 * 60_000; // 30 min (longer than sweep TTL)
-  /** Semaphore for serializing stats fetches (max 1 concurrent). */
-  private statsSemaphore = 0;
+  /** Async gate for serializing stats fetches (max 1 concurrent). */
+  private statsGate = new AsyncGate();
 
   constructor(
     private readonly client: PublicClient,
@@ -104,45 +132,48 @@ export class AnvilScanner {
     } catch {
       /* keep config default */
     }
-    const spreads = await Promise.all(states.map((s) => this.buildSpread(s, gasPriceGwei)));
+
+    // Pre-resolve all OpenSea slugs in parallel (cached, fast on re-scans).
+    const slugs = await Promise.all(
+      states.map((s) => resolveOpenSeaSlug(s.info.collection, this.apiKey)),
+    );
+
+    const spreads = await Promise.all(states.map((s, i) => this.buildSpread(s, gasPriceGwei, slugs[i])));
     spreads.sort((a, b) => (b.spread.netSpreadEth ?? -1) - (a.spread.netSpreadEth ?? -1));
     this.cache = { at: Date.now(), spreads };
     return spreads;
   }
 
-  private async buildSpread(state: AnvilMarketState, gasPriceGwei: number): Promise<AnvilMarketSpread> {
-    const dex = await readTokenDex(state.info.token);
-    const slug = await resolveOpenSeaSlug(state.info.collection, this.apiKey);
-    const opensea = slug
-      ? await readOpenSeaFloor(slug, this.apiKey)
-      : { slug: null, floorEth: null, floorListings: null, totalListings: null, floorOfferEth: null, volume24hEth: null, sales24h: null };
-    if (slug && opensea.floorEth !== null) {
-      opensea.floorOfferEth = await readOpenSeaFloorOffer(slug, this.apiKey);
-    }
+  private async buildSpread(state: AnvilMarketState, gasPriceGwei: number, slug: string | null): Promise<AnvilMarketSpread> {
+    // Parallelize all independent reads: DexScreener + royalty + floor + offer + liquidity
+    const [dex, royaltyBps, openseaFloor, osFloorOfferEth] = await Promise.all([
+      readTokenDex(state.info.token),
+      readRoyaltyBps(this.client, state.info.collection),
+      slug
+        ? readOpenSeaFloor(slug, this.apiKey)
+        : Promise.resolve({ slug: null, floorEth: null, floorListings: null, totalListings: null, floorOfferEth: null, volume24hEth: null, sales24h: null }),
+      slug ? readOpenSeaFloorOffer(slug, this.apiKey) : Promise.resolve(null),
+    ]);
+    const opensea = { ...openseaFloor, floorOfferEth: osFloorOfferEth };
+
     // Fetch 24h liquidity data (volume + sales) for the dead/thin/liquid taxonomy.
-    // Null slug → stats not fetched. Null stats on error → {null, null}, never confused with "dead" (sales===0).
-    // Uses per-market cache (30-min TTL) + semaphore (max 1 concurrent fetch).
     if (slug) {
       const now = Date.now();
-      const cached = this.statsCache.get(slug!);
+      const cached = this.statsCache.get(slug);
       if (cached && now - cached.fetchedAt < this.STATS_TTL_MS) {
-        // Serve from cache — don't fabricate "fresh fetch succeeded"
         opensea.volume24hEth = cached.volume24hEth;
         opensea.sales24h = cached.sales24h;
       } else {
-        // Serialize stats fetches (max 1 concurrent via semaphore)
-        while (this.statsSemaphore > 0) {
-          await new Promise((r) => setTimeout(r, 200));
-        }
-        this.statsSemaphore++;
+        // Serialize stats fetches (max 1 concurrent via gate)
+        await this.statsGate.acquire();
         try {
-          const liq = await readOpenSeaLiquidity(slug!, this.apiKey);
+          const liq = await readOpenSeaLiquidity(slug, this.apiKey);
           opensea.volume24hEth = liq.volume24hEth;
           opensea.sales24h = liq.sales24h;
           const healthy = liq.volume24hEth !== null || liq.sales24h !== null;
-          this.statsCache.set(slug!, { volume24hEth: liq.volume24hEth, sales24h: liq.sales24h, fetchedAt: now, healthy });
+          this.statsCache.set(slug, { volume24hEth: liq.volume24hEth, sales24h: liq.sales24h, fetchedAt: now, healthy });
         } finally {
-          this.statsSemaphore--;
+          this.statsGate.release();
         }
       }
     }
@@ -175,12 +206,12 @@ export class AnvilScanner {
         osFloorListings: opensea.floorListings,
         osTotalListings: opensea.totalListings,
         dexSwapCostEth,
-      volume24hEth: opensea.volume24hEth,
-      sales24h: opensea.sales24h,
+        volume24hEth: opensea.volume24hEth,
+        sales24h: opensea.sales24h,
       },
-      { ...this.spreadConfig, gasPriceGwei },
+      { ...this.spreadConfig, gasPriceGwei, royaltyBps },
     );
 
-    return { state, dex, opensea, anvilFloorEth, spread, dexSwapCostEth };
+    return { state, dex, opensea, anvilFloorEth, spread, dexSwapCostEth, royaltyBps };
   }
 }

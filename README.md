@@ -12,8 +12,11 @@ For each Anvil AMM market the dashboard:
 2. Reads the DEX token price from DexScreener
 3. Computes exact swap cost via Uniswap V3 pool math
 4. Pulls OpenSea floor listing and highest bid
-5. Calculates net spread (buy cost vs sell proceeds, minus fees and gas)
-6. Classifies the market as **tradable**, **thin**, or **dead**
+5. Reads on-chain ERC-2981 royalty per collection
+6. Calculates net spread (buy cost vs sell proceeds, minus fees, royalty, and gas)
+7. Classifies the market as **tradable**, **thin**, or **dead**
+
+The dashboard also displays the **Nightshades** Night phase (Night/Sunrise/Day), countdown to next Night, and total pot value.
 
 ## Links
 
@@ -81,8 +84,8 @@ All optional. Copy `.env.example` to `.env` to customize.
 |----------|---------|-------------|
 | `OPENSEA_API_KEY` | *(none)* | OpenSea API key. Enables floor/offer data. Without it, OS data is disabled. |
 | `ROBINHOOD_RPC_URL` | `https://rpc.mainnet.chain.robinhood.com` | Custom RPC endpoint for Robinhood Chain. |
-| `RPC_RPS` | `2` | RPC requests per second (token bucket). |
-| `RPC_BURST` | `3` | RPC burst capacity (token bucket). |
+| `RPC_RPS` | `10` | RPC requests per second (token bucket). |
+| `RPC_BURST` | `12` | RPC burst capacity (token bucket). |
 
 ### Getting an OpenSea API Key
 
@@ -259,6 +262,54 @@ curl http://localhost:3004/api/analytics
 }
 ```
 
+### `GET /api/night`
+
+Returns current Nightshades Night state, phase, pot value, and config.
+
+**Example Request:**
+
+```bash
+curl http://localhost:3004/api/night
+```
+
+**Example Response:**
+
+```json
+{
+  "state": "normal",
+  "label": "Day",
+  "decayProgress": null,
+  "taxBps": null,
+  "msUntilNight": 7200000,
+  "potEth": 13.7268,
+  "config": {
+    "nightStartMinutes": 600,
+    "nightEndMinutes": 660,
+    "recoveryEndMinutes": 780,
+    "decayDurationSeconds": 3600,
+    "maxTaxRate": 0.99,
+    "decayCurve": "linear",
+    "safeLaunchLensAddress": "0x25b5Df581f4b2Ed450203f375ad8A28b17F115B3",
+    "factionLiquidityVault": "0xfff716727d7E80E29eab5D3498b7F28431e65C58",
+    "maxBuyTaxBps": 500,
+    "maxSellTaxBps": 1000,
+    "minPoolTvlEth": 0.01,
+    "minPotSizeEth": 0.005,
+    "maxPotToTvlRatio": 0.5
+  },
+  "now": "2026-09-17T16:00:00.000Z"
+}
+```
+
+**Night States:**
+
+| State | Time (EDT) | Description |
+|-------|------------|-------------|
+| `night_locked` | 10:00–11:00 AM | All faction trading paused |
+| `decay` | 11:00 AM–12:00 PM | Anti-snipe tax decays 99% → 0% |
+| `recovery` | 12:00–1:00 PM | Trading resumes, recovery window |
+| `normal` | All other times | Standard trading |
+
 ### `GET /nonexistent` (404)
 
 HTML requests receive a styled 404 page. API requests (no `Accept: text/html`) receive:
@@ -294,6 +345,7 @@ Sell Proceeds:
   floorEth  = OpenSea floor listing
   bidEth    = OpenSea highest bid
   feeEth    = 2.5% OpenSea marketplace fee
+  royalty   = on-chain ERC-2981 royalty (per collection)
 
 Net Spread:
   spreadEth = sellProceeds - buyCost - gas
@@ -309,10 +361,12 @@ Markets are classified as:
 
 - **Frontend**: Single HTML file with Alpine.js (CDN), inline CSS/JS
 - **Backend**: Vercel serverless functions (TypeScript)
-- **On-chain**: viem library for RPC calls with token-bucket rate limiting
-- **Cache**: 5-minute TTL for market scans, 30-minute for stats
+- **On-chain**: viem library for RPC calls with multicall batching + token-bucket rate limiting
+- **Cache**: 5-minute TTL for market scans, 5-minute for floor/offer, 30-minute for stats, 1-hour for slug/royalty
 - **Analytics**: In-memory counters (requests, scans, errors, response times)
 - **Data Sources**: Robinhood Chain RPC, DexScreener API, OpenSea V2 API, clutch.market API
+- **Nightshades**: Time-based Night state machine + on-chain pot reads
+- **Royalty**: ERC-2981 on-chain royalty reader (per collection)
 - **API Spec**: OpenAPI 3.0 at `/openapi.json`
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full technical deep-dive.
@@ -323,8 +377,10 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full technical deep-dive.
 |-------|-----------|
 | Frontend | Alpine.js, Orbitron + Share Tech Mono fonts |
 | Backend | Vercel Serverless, TypeScript |
-| On-chain | viem, Uniswap V3 pool math |
+| On-chain | viem, Uniswap V3 pool math, Multicall3 batching |
 | APIs | DexScreener, OpenSea V2, clutch.market |
+| Nightshades | Time-based state machine, on-chain vault reads |
+| Royalty | ERC-2981 on-chain reader |
 | Analytics | In-memory counters, canvas charts |
 | Chain | Robinhood Chain (4663) |
 | Deploy | Vercel |

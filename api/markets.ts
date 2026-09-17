@@ -79,6 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           osTotalListings: s.opensea.totalListings,
           volume24hEth: s.opensea.volume24hEth,
           sales24h: s.opensea.sales24h,
+          royaltyBps: s.royaltyBps,
           spread: s.spread,
           observedAtMs: s.state.observedAtMs,
           verified: s.state.clutch?.verified ?? false,

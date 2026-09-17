@@ -8,6 +8,7 @@ Technical deep-dive into the F-A-D-E Anvil Dashboard.
 ┌─────────────────────────────────────────────────────────┐
 │                    Browser (SPA)                         │
 │  Alpine.js ─── fetch /api/markets ──→ render table      │
+│  Alpine.js ─── fetch /api/night ────→ Night card        │
 │  Auto-refresh 60s · Dark/light · localStorage prefs     │
 │  /analytics.html ──→ fetch /api/analytics ──→ charts    │
 └──────────────────────────┬──────────────────────────────┘
@@ -17,14 +18,19 @@ Technical deep-dive into the F-A-D-E Anvil Dashboard.
 │                                                          │
 │  GET /api/markets                                        │
 │    └─ AnvilScanner.spreads()                             │
-│         ├─ scanAnvilMarkets()     ← on-chain discovery   │
+│         ├─ scanAnvilMarkets()     ← multicall batched    │
 │         ├─ readTokenDex()         ← DexScreener pricing  │
-│         ├─ readOpenSeaFloor()     ← OpenSea listings     │
-│         ├─ readOpenSeaFloorOffer()← OpenSea bids         │
+│         ├─ resolveOpenSeaSlug()   ← slug (cached 1hr)    │
+│         ├─ readOpenSeaFloor()     ← floor (cached 5min)  │
+│         ├─ readOpenSeaFloorOffer()← offer (cached 5min)  │
 │         ├─ readOpenSeaLiquidity() ← 24h volume/sales     │
+│         ├─ readRoyaltyBps()       ← ERC-2981 royalty     │
 │         ├─ readV3Pool()           ← V3 pool state        │
 │         ├─ wethInForExactOut()    ← exact swap cost      │
 │         └─ computeAnvilSpread()   ← pure math            │
+│                                                          │
+│  GET /api/night                                          │
+│    └─ getCurrentNightState() + getVaultPotEth()          │
 │                                                          │
 │  GET /api/health  ← uptime, scanCount, requestCount      │
 │  GET /api/analytics ← full analytics snapshot            │
@@ -39,7 +45,8 @@ Technical deep-dive into the F-A-D-E Anvil Dashboard.
           ▼                ▼                ▼
    Robinhood Chain    DexScreener API    OpenSea V2 API
    (viem public       (token prices,     (floor, bids,
-    client, token-     pool TVL)          volume, sales)
+    client, multicall  pool TVL)          volume, sales)
+    batching + token-
     bucket rate lim)
 ```
 
@@ -49,23 +56,27 @@ Technical deep-dive into the F-A-D-E Anvil Dashboard.
 fade-anvil-dashboard/
 ├── api/                          # Vercel serverless handlers
 │   ├── markets.ts                # GET /api/markets — full scan + spread
+│   ├── night.ts                  # GET /api/night — Nightshades state + config
 │   ├── health.ts                 # GET /api/health — liveness + analytics
 │   └── analytics.ts              # GET /api/analytics — full snapshot
 │
 ├── src/lib/                      # Core TypeScript library
 │   ├── config.ts                 # RPC client with token-bucket rate limiting
 │   ├── contracts.ts              # Chain defs, contract addresses, ABI fragments
-│   ├── anvil.ts                  # Market scanner (704 lines) — the core
-│   ├── anvil-spread.ts           # Pure spread computation (251 lines)
+│   ├── anvil.ts                  # Market scanner — multicall batching, OpenSea caching
+│   ├── anvil-spread.ts           # Pure spread computation (includes royalty)
 │   ├── anvil-combine.ts          # AnvilScanner orchestrator class
 │   ├── v3-pool.ts                # Uniswap V3 constant-product math
-│   └── analytics.ts              # In-memory analytics engine
+│   ├── analytics.ts              # In-memory analytics engine
+│   ├── night-detector.ts         # Night state machine (4 states, decay progress)
+│   ├── night-settings.ts         # Display-only Nightshades parameters
+│   └── erc2981-royalty.ts        # On-chain ERC-2981 royalty reader
 │
 ├── bin/
 │   └── fade-anvil.js             # Standalone launcher (npx / npm start)
 │
 ├── public/
-│   ├── index.html                # Dashboard SPA (~730 lines)
+│   ├── index.html                # Dashboard SPA (~840 lines)
 │   ├── analytics.html            # Analytics dashboard (~350 lines)
 │   ├── 404.html                  # Styled error page
 │   └── openapi.json              # OpenAPI 3.0 spec
@@ -78,7 +89,6 @@ fade-anvil-dashboard/
 │       └── api.test.ts           # 10 API integration tests
 │
 ├── .github/workflows/ci.yml     # GitHub Actions CI
-├── test-server.ts                # Legacy standalone server (port 3004)
 ├── vercel.json                   # Build + routing config
 ├── package.json                  # Scripts, deps, bin entry
 └── tsconfig.json                 # TypeScript config
@@ -137,12 +147,40 @@ Net Spread:
 | **Thin** | Spread exists but below thresholds |
 | **Dead** | Zero 24h sales on OpenSea |
 
+### 4b. Nightshades State Machine
+
+`night-detector.ts` implements a pure time-based state machine:
+
+| State | Time (EDT) | Description |
+|-------|------------|-------------|
+| `night_locked` | 10:00–11:00 AM | All faction trading paused |
+| `decay` | 11:00 AM–12:00 PM | Anti-snipe tax decays 99% → 0% |
+| `recovery` | 12:00–1:00 PM | Trading resumes, recovery window |
+| `normal` | All other times | Standard trading |
+
+Decay progress is computed as a fraction of `decayDurationSeconds`. Tax rate uses linear or exponential curve based on `decayCurve` config.
+
+### 4c. ERC-2981 Royalty
+
+`erc2981-royalty.ts` reads on-chain royalties per collection:
+
+1. Calls `royaltyInfo(tokenId=1, salePrice=10000e18)` on the collection contract
+2. Computes bps: `royaltyAmount * 10000 / salePrice`
+3. Caches per collection for 1 hour
+4. Falls back to 0 bps if contract doesn't implement ERC-2981
+
+Royalty is merged into the spread config per market, reducing sell proceeds by the royalty percentage.
+
 ### 5. Caching
 
 | Cache | TTL | Scope |
 |-------|-----|-------|
 | Market scan | 5 min | Full sweep result |
+| OpenSea slug | 1 hour | Per collection address |
+| OpenSea floor | 5 min | Per slug |
+| OpenSea offer | 5 min | Per slug |
 | OpenSea stats | 30 min | Per-slug volume/sales |
+| ERC-2981 royalty | 1 hour | Per collection address |
 | clutch.market | 5 min | All-markets metadata |
 | Dedup in-flight | — | Prevents concurrent sweeps |
 
@@ -194,16 +232,17 @@ Analytics requested
 
 `config.ts` wraps the fetch function with a token bucket:
 
-- **Default**: 2 tokens/sec, burst 3
+- **Default**: 10 tokens/sec, burst 12
 - Tokens refill continuously
 - When empty, requests queue and wait
 - Purpose: stay under the public node's aggregate limit (dashboard + alert scanner share the same node)
 
 ### OpenSea
 
-- Sequential queue at ~8 req/s
+- Sequential queue at 10 req/s (100ms interval)
 - User-provided API keys accepted via `?openseaKey=` query param
 - Never stored server-side
+- Slug resolution cached 1 hour, floor/offer cached 5 minutes
 
 ## V3 Pool Math (`v3-pool.ts`)
 
